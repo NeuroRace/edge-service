@@ -1,0 +1,17 @@
+# Node
+/data_broker/node_modules/
+
+# Data files
+data_pipeline/data/
+
+# Credenciais do Google Cloud / Firebase
+data_pipeline/secrets/firebase-credentials.json
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+gesture_detector/env
+
+env/.env
