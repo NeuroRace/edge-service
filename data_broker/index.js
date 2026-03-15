@@ -1,5 +1,6 @@
 const http = require('http');
 const { Server } = require('socket.io');
+const { ENFORCED_EVENTS, validateEventPayload } = require('./event_contracts');
 
 const BROKER_PORT = Number(process.env.BROKER_PORT || 3000);
 const allowedOrigins = (process.env.BROKER_ALLOWED_ORIGINS ||
@@ -39,10 +40,23 @@ function log(level, message, metadata = {}) {
 
 function forwardEvent(socket, event) {
   return (payload) => {
+    const validationError = validateEventPayload(event, payload);
+
+    if (validationError !== null) {
+      log('warn', 'event_rejected', {
+        event,
+        socketId: socket.id,
+        validationError,
+        payload
+      });
+      return;
+    }
+
     log('info', 'event_received', {
       event,
       socketId: socket.id,
-      payload
+      payload,
+      enforced: ENFORCED_EVENTS.has(event)
     });
     socket.broadcast.emit(event, payload);
   };

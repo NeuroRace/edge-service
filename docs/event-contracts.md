@@ -1,6 +1,6 @@
 # Event Contracts
 
-Este documento registra os contratos observados atualmente na codebase. O objetivo desta fase e preservar o comportamento externo atual enquanto explicita os payloads e os produtores conhecidos.
+Este documento registra os contratos observados atualmente na codebase. O objetivo desta fase e preservar o comportamento externo atual enquanto explicita os payloads, os produtores conhecidos e os contratos agora validados no broker.
 
 ## Broker
 
@@ -9,6 +9,7 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
 - Porta padrao: `3000`
 - Health check HTTP: `GET /health`
 - Eventos repassados sem alteracao: `blink`, `eSense`, `handGesture`, `raceStarted`, `hasFinished`, `gameEvent`
+- Eventos validados no broker nesta fase: `eSense`, `handGesture`
 
 ## Event: `eSense`
 
@@ -32,6 +33,13 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
 }
 ```
 
+Regras validadas no broker:
+- `player`, `attention`, `meditation` e `timeStamp` devem ser numericos
+- `eegPower` deve ser objeto
+- `source` deve ser string nao vazia
+- `status` deve ser um de `ok`, `poor`, `no-signal`, `unknown`
+- `poorSignalLevel` pode ser numero, `null` ou ausente
+
 ## Event: `handGesture`
 
 - Produtor confirmado: `gesture_detector/hand_fist_detector.py`
@@ -44,6 +52,9 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
   "timeStamp": 1735689600000
 }
 ```
+
+Regras validadas no broker:
+- `player` e `timeStamp` devem ser numericos
 
 ## Event: `blink`
 
@@ -64,3 +75,14 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
 - O broker aceita e retransmite estes eventos em `data_broker/index.js`
 - Nao foi possivel confirmar pela codebase um produtor ou consumidor versionado
 - Nesta fase, o broker continua repassando os payloads exatamente como recebe
+
+## Acquisition resilience
+
+- O acquisition agora tenta reconectar a fonte EEG e o broker em falhas recuperaveis
+- Timeouts e backoff sao configuraveis por ambiente:
+  - `EEG_CONNECT_TIMEOUT_SECONDS`
+  - `EEG_READ_TIMEOUT_SECONDS`
+  - `BROKER_CONNECT_TIMEOUT_SECONDS`
+  - `ACQ_RETRY_BASE_DELAY_SECONDS`
+  - `ACQ_RETRY_MAX_DELAY_SECONDS`
+  - `ACQ_MAX_RECONNECT_ATTEMPTS` (`0` = ilimitado)

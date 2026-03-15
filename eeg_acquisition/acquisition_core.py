@@ -1,4 +1,5 @@
 import json
+import math
 from typing import Any
 
 
@@ -42,6 +43,8 @@ def build_esense_payload(
 
     if not isinstance(e_sense, dict) or eeg_power is None:
         return None
+    if "attention" not in e_sense or "meditation" not in e_sense:
+        return None
 
     psl = packet.get("poorSignalLevel")
 
@@ -55,3 +58,16 @@ def build_esense_payload(
         "source": source,
         "timeStamp": now_ms,
     }
+
+
+def compute_retry_delay_seconds(
+    attempt: int,
+    *,
+    base_delay_seconds: float,
+    max_delay_seconds: float,
+) -> float:
+    if attempt <= 0:
+        return 0.0
+
+    delay = base_delay_seconds * math.pow(2, attempt - 1)
+    return min(delay, max_delay_seconds)

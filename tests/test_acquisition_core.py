@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eeg_acquisition"))
 
 from acquisition_core import (  # noqa: E402
     build_esense_payload,
+    compute_retry_delay_seconds,
     extract_json_messages,
     parse_packet,
     signal_status,
@@ -81,6 +82,53 @@ class EsensePayloadTests(unittest.TestCase):
         )
 
         self.assertIsNone(payload)
+
+    def test_returns_none_when_required_esense_fields_are_missing(self):
+        payload = build_esense_payload(
+            {
+                "poorSignalLevel": 1,
+                "eSense": {"attention": 10},
+                "eegPower": {"delta": 99},
+            },
+            player_id=1,
+            source="real",
+            threshold=0,
+            now_ms=999,
+        )
+
+        self.assertIsNone(payload)
+
+
+class RetryDelayTests(unittest.TestCase):
+    def test_returns_zero_when_attempt_is_not_positive(self):
+        self.assertEqual(
+            compute_retry_delay_seconds(
+                0,
+                base_delay_seconds=1,
+                max_delay_seconds=10,
+            ),
+            0.0,
+        )
+
+    def test_applies_exponential_backoff(self):
+        self.assertEqual(
+            compute_retry_delay_seconds(
+                3,
+                base_delay_seconds=1,
+                max_delay_seconds=10,
+            ),
+            4.0,
+        )
+
+    def test_caps_retry_delay_at_maximum(self):
+        self.assertEqual(
+            compute_retry_delay_seconds(
+                10,
+                base_delay_seconds=1,
+                max_delay_seconds=5,
+            ),
+            5,
+        )
 
 
 if __name__ == "__main__":
