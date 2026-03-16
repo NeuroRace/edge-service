@@ -12,6 +12,7 @@ from acquisition_core import (  # noqa: E402
     parse_packet,
     signal_status,
 )
+from acquisition_config import load_config  # noqa: E402
 
 
 class SignalStatusTests(unittest.TestCase):
@@ -129,6 +130,39 @@ class RetryDelayTests(unittest.TestCase):
             ),
             5,
         )
+
+
+class ConfigTests(unittest.TestCase):
+    def test_load_config_reads_expected_runtime_keys(self):
+        config = load_config(
+            {
+                "PLAYER_ID": "2",
+                "ACQ_PORT": "13855",
+                "EEG_HOST": "simulator-b",
+                "BROKER_URL": "http://broker:3000",
+                "SOURCE": "bot",
+                "POOR_SIGNAL_LEVEL_THRESHOLD": "5",
+                "EEG_CONNECT_TIMEOUT_SECONDS": "3",
+                "EEG_READ_TIMEOUT_SECONDS": "7",
+                "BROKER_CONNECT_TIMEOUT_SECONDS": "4",
+                "ACQ_RETRY_BASE_DELAY_SECONDS": "2",
+                "ACQ_RETRY_MAX_DELAY_SECONDS": "12",
+                "ACQ_MAX_RECONNECT_ATTEMPTS": "8",
+            }
+        )
+
+        self.assertEqual(config.player_id, 2)
+        self.assertEqual(config.acq_port, 13855)
+        self.assertEqual(config.eeg_host, "simulator-b")
+        self.assertEqual(config.broker_url, "http://broker:3000")
+        self.assertEqual(config.source, "bot")
+        self.assertEqual(config.poor_signal_level_threshold, 5)
+        self.assertEqual(config.eeg_connect_timeout_seconds, 3)
+        self.assertEqual(config.eeg_read_timeout_seconds, 7)
+        self.assertEqual(config.broker_connect_timeout_seconds, 4)
+        self.assertEqual(config.retry_base_delay_seconds, 2)
+        self.assertEqual(config.retry_max_delay_seconds, 12)
+        self.assertEqual(config.max_reconnect_attempts, 8)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
 
 - Runtime: Node.js + Socket.IO
 - Entry point: `data_broker/index.js`
+- Modulos internos: `config.js`, `logger.js`, `http_server.js`, `socket_handlers.js`, `event_contracts.js`
 - Porta padrao: `3000`
 - Health check HTTP: `GET /health`
 - Eventos repassados sem alteracao: `blink`, `eSense`, `handGesture`, `raceStarted`, `hasFinished`, `gameEvent`
@@ -79,6 +80,7 @@ Regras validadas no broker:
 ## Acquisition resilience
 
 - O acquisition agora tenta reconectar a fonte EEG e o broker em falhas recuperaveis
+- O entry point `eeg_acquisition/acquisition_service.py` agora apenas compoe `acquisition_config`, `acquisition_runner`, `acquisition_clients`, `acquisition_pipeline` e `acquisition_core`
 - Timeouts e backoff sao configuraveis por ambiente:
   - `EEG_CONNECT_TIMEOUT_SECONDS`
   - `EEG_READ_TIMEOUT_SECONDS`
