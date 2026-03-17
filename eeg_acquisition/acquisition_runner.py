@@ -13,9 +13,14 @@ def should_stop_retrying(attempt: int, config: AcquisitionConfig) -> bool:
 
 
 def run_acquisition_service(config: AcquisitionConfig, log):
-    log.info(f"Servico de Aquisição para Player {config.player_id} iniciado.")
-    log.info(f"Conectando a fonte de EEG em {config.eeg_host}:{config.acq_port}")
-    log.info(f"Enviando dados para o Broker em {config.broker_url}")
+    log.info(
+        "acquisition_started",
+        playerId=config.player_id,
+        eegHost=config.eeg_host,
+        acqPort=config.acq_port,
+        brokerUrl=config.broker_url,
+        source=config.source,
+    )
 
     attempt = 0
 
@@ -25,13 +30,13 @@ def run_acquisition_service(config: AcquisitionConfig, log):
             sio = None
 
             try:
-                log.info("Tentando conectar a fonte de EEG...")
+                log.info("connecting_eeg_source", attempt=attempt + 1)
                 client = create_eeg_client(config)
-                log.info("Conectado a fonte de EEG com sucesso.")
+                log.info("eeg_source_connected", eegHost=config.eeg_host, acqPort=config.acq_port)
 
-                log.info("Tentando conectar ao Broker...")
+                log.info("connecting_broker", attempt=attempt + 1, brokerUrl=config.broker_url)
                 sio = create_broker_client(config)
-                log.info("Conectado ao Broker com sucesso.")
+                log.info("broker_connected", brokerUrl=config.broker_url)
 
                 attempt = 0
                 stream_packets(client=client, sio=sio, config=config, log=log)
@@ -46,8 +51,10 @@ def run_acquisition_service(config: AcquisitionConfig, log):
                     max_delay_seconds=config.retry_max_delay_seconds,
                 )
                 log.warning(
-                    f"Falha recuperavel no acquisition: {exc}. "
-                    f"Nova tentativa em {delay_seconds:.1f}s (tentativa {attempt})."
+                    "recoverable_acquisition_failure",
+                    error=str(exc),
+                    nextRetryDelaySeconds=delay_seconds,
+                    attempt=attempt,
                 )
                 time.sleep(delay_seconds)
             except (socket.error, socketio.exceptions.ConnectionError) as exc:
@@ -61,26 +68,31 @@ def run_acquisition_service(config: AcquisitionConfig, log):
                     max_delay_seconds=config.retry_max_delay_seconds,
                 )
                 log.warning(
-                    f"Erro de conexao no acquisition: {exc}. "
-                    f"Nova tentativa em {delay_seconds:.1f}s (tentativa {attempt})."
+                    "connection_failure",
+                    error=str(exc),
+                    nextRetryDelaySeconds=delay_seconds,
+                    attempt=attempt,
                 )
                 time.sleep(delay_seconds)
             finally:
                 close_connections(client, sio)
 
     except KeyboardInterrupt:
-        log.info("Encerrando servico de aquisicao por solicitacao do usuario.")
+        log.info("acquisition_shutdown_requested")
     except socket.error as exc:
         log.critical(
-            f"Erro de conexao com a fonte de EEG em {config.eeg_host}:{config.acq_port}. "
-            f"Verifique se o simulador ou dispositivo esta rodando. Erro: {exc}"
+            "eeg_connection_error",
+            eegHost=config.eeg_host,
+            acqPort=config.acq_port,
+            error=str(exc),
         )
     except socketio.exceptions.ConnectionError as exc:
         log.critical(
-            f"Nao foi possivel conectar ao Broker em {config.broker_url}. "
-            f"Verifique se o broker esta rodando. Erro: {exc}"
+            "broker_connection_error",
+            brokerUrl=config.broker_url,
+            error=str(exc),
         )
-    except Exception:
-        log.critical("Uma excecao nao tratada ocorreu no loop de aquisicao.", exc_info=True)
+    except Exception as exc:
+        log.critical("unexpected_acquisition_error", error=str(exc))
     finally:
-        log.info("Conexoes encerradas.")
+        log.info("acquisition_stopped")

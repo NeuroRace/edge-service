@@ -1,6 +1,6 @@
-import logging
 import os
 from dataclasses import dataclass
+from acquisition_logger import StructuredLogger
 
 
 @dataclass(frozen=True)
@@ -20,10 +20,8 @@ class AcquisitionConfig:
     max_reconnect_attempts: int
 
 
-def configure_logging() -> logging.Logger:
-    log_format = '%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
-    logging.basicConfig(level=logging.INFO, format=log_format)
-    return logging.getLogger(__name__)
+def configure_logging() -> StructuredLogger:
+    return StructuredLogger("acquisition")
 
 
 def load_config(env: dict[str, str] | None = None) -> AcquisitionConfig:
