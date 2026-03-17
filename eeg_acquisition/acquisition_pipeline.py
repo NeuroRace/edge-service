@@ -29,10 +29,10 @@ def stream_packets(*, client, sio, config: AcquisitionConfig, log):
         for raw in raw_messages:
             packet = parse_packet(raw)
             if packet is None:
-                log.warning(f"Falha ao decodificar JSON. Dados brutos: '{raw}'")
+                log.warning("invalid_json_packet", raw=raw)
                 continue
 
-            log.debug(f"Pacote de dados recebido: {packet}")
+            log.debug("packet_received", packet=packet)
             now_ms = int(time.time() * 1000)
 
             if 'eSense' not in packet:
@@ -47,7 +47,7 @@ def stream_packets(*, client, sio, config: AcquisitionConfig, log):
             )
 
             if e_sense_payload is None:
-                log.warning(f"Pacote eSense incompleto recebido: {packet}")
+                log.warning("invalid_esense_packet", packet=packet)
                 continue
 
             if not sio.connected:
@@ -56,4 +56,4 @@ def stream_packets(*, client, sio, config: AcquisitionConfig, log):
                 )
 
             sio.emit('eSense', e_sense_payload)
-            log.debug("Pacote eSense enviado para o Broker.")
+            log.debug("esense_emitted", payload=e_sense_payload)
