@@ -62,8 +62,65 @@ function createSessionManager(redis, config, log) {
     });
   }
 
-  async function onEsense() {}
-  async function onHasFinished() {}
+  async function onEsense(payload) {
+    if (payload.source === 'bot') return;
+
+    const session = await redis.hgetall('session:current');
+    if (!session) {
+      log('warn', 'esense_no_active_session', { player: payload.player });
+      return;
+    }
+
+    await redis.rpush(
+      `session:${session.id}:player:${payload.player}:packets`,
+      JSON.stringify(payload),
+    );
+  }
+
+  async function onHasFinished(payload) {
+    const { playerId } = payload;
+    const session = await redis.hgetall('session:current');
+    if (!session) {
+      log('warn', 'has_finished_no_active_session', { playerId });
+      return;
+    }
+
+    const isBotKey = `player${playerId}IsBot`;
+    const dispatchedKey = `player${playerId}Dispatched`;
+
+    if (session[isBotKey] === 'true') return;
+
+    if (session[dispatchedKey] === 'true') {
+      log('warn', 'has_finished_duplicate', { playerId, sessionId: session.id });
+      return;
+    }
+
+    const rawPackets = await redis.lrange(
+      `session:${session.id}:player:${playerId}:packets`,
+      0,
+      -1,
+    );
+    const packets = rawPackets.map((p) => JSON.parse(p));
+
+    const job = {
+      jobId: randomUUID(),
+      playerId,
+      sessionId: session.id,
+      expiresAt: Date.now() + config.dispatchTtlMs,
+      attempts: 0,
+      payload: {
+        email: session[`player${playerId}Email`],
+        playerUuid: session[`player${playerId}Uuid`] || null,
+        startedAt: Number(session.startedAt),
+        finishedAt: Date.now(),
+        packets,
+      },
+    };
+
+    await redis.rpush('dispatch:queue', JSON.stringify(job));
+    await redis.hset('session:current', dispatchedKey, 'true');
+    log('info', 'job_enqueued', { jobId: job.jobId, playerId, sessionId: session.id });
+  }
 
   return { registerPlayers, onRaceStarted, onEsense, onHasFinished };
 }
