@@ -46,15 +46,15 @@ function createForwardEventHandler({ log, socket, event, session }) {
     if (session) {
       if (event === 'eSense') {
         session.onEsense(payload).catch((err) =>
-          log('error', 'session_esense_error', { err: err.message }),
+          log('error', 'session_esense_error', { err: err?.message ?? String(err) }),
         );
       } else if (event === 'raceStarted') {
         session.onRaceStarted(payload).catch((err) =>
-          log('error', 'session_race_started_error', { err: err.message }),
+          log('error', 'session_race_started_error', { err: err?.message ?? String(err) }),
         );
       } else if (event === 'hasFinished') {
         session.onHasFinished(payload).catch((err) =>
-          log('error', 'session_has_finished_error', { err: err.message }),
+          log('error', 'session_has_finished_error', { err: err?.message ?? String(err) }),
         );
       }
     }
