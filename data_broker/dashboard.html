@@ -415,9 +415,9 @@
   function updatePlayer(playerNum, payload) {
     const p = playerNum;
     document.getElementById(`p${p}-attention`).innerHTML =
-      `${payload.attention}<span class="metric-unit">%</span>`;
+      `${escapeHtml(payload.attention)}<span class="metric-unit">%</span>`;
     document.getElementById(`p${p}-meditation`).innerHTML =
-      `${payload.meditation}<span class="metric-unit">%</span>`;
+      `${escapeHtml(payload.meditation)}<span class="metric-unit">%</span>`;
     document.getElementById(`p${p}-attention-bar`).style.width  = `${payload.attention}%`;
     document.getElementById(`p${p}-meditation-bar`).style.width = `${payload.meditation}%`;
 
@@ -466,7 +466,7 @@
       const safeEmail = escapeHtml(job.playerEmail);
       const safeBadge = escapeHtml(badge);
       return `
-        <div class="dispatch-item ${itemCls}">
+        <div class="dispatch-item ${escapeHtml(itemCls)}">
           <span class="dispatch-icon">${icon}</span>
           <div class="dispatch-info">
             <div class="dispatch-job">${shortId}…</div>
