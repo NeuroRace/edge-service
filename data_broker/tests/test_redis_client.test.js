@@ -24,6 +24,7 @@ test('evento connect loga redis_connected no nível info', () => {
   assert.equal(logs.length, 1);
   assert.equal(logs[0].level, 'info');
   assert.equal(logs[0].message, 'redis_connected');
+  assert.deepEqual(logs[0].meta, {});
 });
 
 test('evento error loga redis_error com message no nível error', () => {
@@ -55,4 +56,5 @@ test('evento close loga redis_closed no nível warn', () => {
   assert.equal(logs.length, 1);
   assert.equal(logs[0].level, 'warn');
   assert.equal(logs[0].message, 'redis_closed');
+  assert.deepEqual(logs[0].meta, {});
 });
