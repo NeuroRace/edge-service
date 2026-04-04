@@ -1,1 +1,541 @@
-<html><body>dashboard</body></html>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>NeuroRace — Dashboard</title>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111827;
+      color: #f9fafb;
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      background: #1f2937;
+      border-bottom: 1px solid #374151;
+      flex-shrink: 0;
+    }
+    .logo {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+    .phase-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 99px;
+      border: 1px solid;
+      letter-spacing: 1px;
+    }
+    .phase-setup { background: #1a1f35; color: #818cf8; border-color: #6366f133; }
+    .phase-race  { background: #05301a; color: #34d399;  border-color: #34d39933; }
+
+    /* Setup form */
+    .setup-section {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 24px;
+      background: #1f2937;
+      border-bottom: 1px solid #374151;
+      overflow: hidden;
+      max-height: 72px;
+      opacity: 1;
+      transition: max-height 0.4s ease, opacity 0.3s ease, padding 0.4s ease;
+      flex-shrink: 0;
+    }
+    .setup-section.hidden {
+      max-height: 0;
+      opacity: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+    .setup-input {
+      flex: 1;
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: #f9fafb;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .setup-input:focus { border-color: #6366f1; }
+    .register-btn {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.2s;
+    }
+    .register-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .register-btn:not(:disabled):hover { opacity: 0.85; }
+    .feedback { font-size: 12px; min-width: 160px; }
+    .feedback.ok  { color: #34d399; }
+    .feedback.err { color: #ef4444; }
+
+    /* Main layout */
+    .main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      overflow: hidden;
+    }
+
+    /* Players area */
+    .players-area {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      padding: 20px;
+      align-content: start;
+      overflow-y: auto;
+    }
+
+    /* Player card */
+    .player-card {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .player-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #9ca3af;
+    }
+
+    /* Signal badge */
+    .signal-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 99px;
+      border: 1px solid;
+    }
+    .signal-ok      { background: #05301a; color: #34d399; border-color: #34d39933; }
+    .signal-check   { background: #2d1f0a; color: #f59e0b; border-color: #f59e0b33; }
+    .signal-none    { background: #2d1010; color: #ef4444; border-color: #ef444433; }
+    .signal-waiting { background: #1a2333; color: #6b7280; border-color: #37415133; }
+
+    /* Metrics */
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .metric-value {
+      font-size: 32px;
+      font-weight: 800;
+      line-height: 1;
+      margin: 4px 0;
+    }
+    .metric-unit {
+      font-size: 14px;
+      color: #6b7280;
+      font-weight: 400;
+    }
+    .metric-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6b7280;
+    }
+    .progress-track {
+      height: 4px;
+      background: #374151;
+      border-radius: 99px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.3s ease;
+    }
+    .p1-attn-fill  { background: linear-gradient(90deg, #6366f1, #8b5cf6); }
+    .p2-attn-fill  { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+    .medit-fill    { background: linear-gradient(90deg, #0ea5e9, #22d3ee); }
+
+    /* Chart */
+    .chart-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6b7280;
+      margin-bottom: 6px;
+    }
+    .chart-container {
+      background: #111827;
+      border-radius: 8px;
+      padding: 8px;
+      height: 80px;
+      position: relative;
+    }
+
+    /* Dispatch sidebar */
+    .dispatch-sidebar {
+      background: #1f2937;
+      border-left: 1px solid #374151;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-title {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #6b7280;
+      padding: 16px 16px 10px;
+      border-bottom: 1px solid #374151;
+      flex-shrink: 0;
+    }
+    .dispatch-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .dispatch-item {
+      background: #111827;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dispatch-icon { width: 16px; text-align: center; flex-shrink: 0; font-size: 12px; }
+    .dispatch-info { flex: 1; min-width: 0; }
+    .dispatch-job   { color: #9ca3af; font-family: monospace; font-size: 10px; }
+    .dispatch-email { color: #6b7280; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dispatch-badge {
+      font-size: 10px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .item-sent    .dispatch-badge { color: #34d399; }
+    .item-retry   .dispatch-badge { color: #f59e0b; }
+    .item-expired .dispatch-badge { color: #ef4444; }
+
+    .empty-queue {
+      color: #4b5563;
+      font-size: 12px;
+      text-align: center;
+      padding: 24px 16px;
+    }
+
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spinning { display: inline-block; animation: spin 1s linear infinite; }
+  </style>
+</head>
+<body data-page="dashboard">
+
+<header class="header">
+  <span class="logo">NeuroRace</span>
+  <span id="phase-badge" class="phase-badge phase-setup">● SETUP</span>
+</header>
+
+<div id="setup-section" class="setup-section">
+  <input id="p1-email" class="setup-input" type="email" placeholder="Player 1 Email">
+  <input id="p2-email" class="setup-input" type="email" placeholder="Player 2 Email">
+  <button id="register-btn" class="register-btn" disabled>Registrar Corrida</button>
+  <span id="register-feedback" class="feedback"></span>
+</div>
+
+<div class="main">
+  <div class="players-area">
+
+    <!-- Player 1 -->
+    <div class="player-card">
+      <div class="card-header">
+        <span class="player-label">Player 1</span>
+        <span id="p1-signal" class="signal-badge signal-waiting">● AGUARDANDO</span>
+      </div>
+      <div class="metrics">
+        <div>
+          <div class="metric-label">Attention</div>
+          <div class="metric-value" id="p1-attention">—</div>
+          <div class="progress-track">
+            <div class="progress-fill p1-attn-fill" id="p1-attention-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="metric-label">Meditation</div>
+          <div class="metric-value" id="p1-meditation">—</div>
+          <div class="progress-track">
+            <div class="progress-fill medit-fill" id="p1-meditation-bar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-label">Atenção — tempo real</div>
+      <div class="chart-container">
+        <canvas id="chart-p1"></canvas>
+      </div>
+    </div>
+
+    <!-- Player 2 -->
+    <div class="player-card">
+      <div class="card-header">
+        <span class="player-label">Player 2</span>
+        <span id="p2-signal" class="signal-badge signal-waiting">● AGUARDANDO</span>
+      </div>
+      <div class="metrics">
+        <div>
+          <div class="metric-label">Attention</div>
+          <div class="metric-value" id="p2-attention">—</div>
+          <div class="progress-track">
+            <div class="progress-fill p2-attn-fill" id="p2-attention-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="metric-label">Meditation</div>
+          <div class="metric-value" id="p2-meditation">—</div>
+          <div class="progress-track">
+            <div class="progress-fill medit-fill" id="p2-meditation-bar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-label">Atenção — tempo real</div>
+      <div class="chart-container">
+        <canvas id="chart-p2"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <aside class="dispatch-sidebar">
+    <div class="sidebar-title">Dispatch Queue</div>
+    <div class="dispatch-list" id="dispatch-list">
+      <div class="empty-queue">Nenhum job ainda</div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  // ─── Charts ────────────────────────────────────────────────────────────────
+
+  function createChart(canvasId, borderColor) {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    return new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: new Array(30).fill(''),
+        datasets: [{
+          data: new Array(30).fill(null),
+          borderColor,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.4,
+          spanGaps: false,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: { display: false },
+          y: { display: false, min: 0, max: 100 },
+        },
+      },
+    });
+  }
+
+  const charts = {
+    1: createChart('chart-p1', '#6366f1'),
+    2: createChart('chart-p2', '#f59e0b'),
+  };
+
+  function pushToChart(chart, value) {
+    chart.data.datasets[0].data.shift();
+    chart.data.datasets[0].data.push(value);
+    chart.data.labels.shift();
+    chart.data.labels.push('');
+    chart.update('none');
+  }
+
+  // ─── Signal badge ──────────────────────────────────────────────────────────
+
+  function getSignalState(poorSignalLevel) {
+    if (poorSignalLevel === null || poorSignalLevel === undefined) {
+      return { text: '● AGUARDANDO', cls: 'signal-waiting' };
+    }
+    if (poorSignalLevel === 0)   return { text: '● SIGNAL OK',    cls: 'signal-ok' };
+    if (poorSignalLevel >= 200)  return { text: '● SEM SINAL',    cls: 'signal-none' };
+    return                              { text: '● CHECK HEADSET', cls: 'signal-check' };
+  }
+
+  // ─── Player update ─────────────────────────────────────────────────────────
+
+  function updatePlayer(playerNum, payload) {
+    const p = playerNum;
+    document.getElementById(`p${p}-attention`).innerHTML =
+      `${payload.attention}<span class="metric-unit">%</span>`;
+    document.getElementById(`p${p}-meditation`).innerHTML =
+      `${payload.meditation}<span class="metric-unit">%</span>`;
+    document.getElementById(`p${p}-attention-bar`).style.width  = `${payload.attention}%`;
+    document.getElementById(`p${p}-meditation-bar`).style.width = `${payload.meditation}%`;
+
+    const signal = getSignalState(payload.poorSignalLevel);
+    const badge  = document.getElementById(`p${p}-signal`);
+    badge.textContent = signal.text;
+    badge.className   = `signal-badge ${signal.cls}`;
+
+    pushToChart(charts[p], payload.attention);
+  }
+
+  // ─── Phase transition ──────────────────────────────────────────────────────
+
+  function enterRacePhase() {
+    document.getElementById('setup-section').classList.add('hidden');
+    const badge = document.getElementById('phase-badge');
+    badge.textContent = '● RACE';
+    badge.className   = 'phase-badge phase-race';
+  }
+
+  // ─── Dispatch queue ────────────────────────────────────────────────────────
+
+  const jobsMap = new Map();
+
+  function renderDispatch() {
+    const list = document.getElementById('dispatch-list');
+    const jobs = Array.from(jobsMap.values()).slice(-20).reverse();
+
+    if (jobs.length === 0) {
+      list.innerHTML = '<div class="empty-queue">Nenhum job ainda</div>';
+      return;
+    }
+
+    list.innerHTML = jobs.map((job) => {
+      let icon, badge, itemCls;
+      if (job.status === 'sent') {
+        icon = '✓'; itemCls = 'item-sent'; badge = 'enviado';
+      } else if (job.status === 'retry') {
+        icon = '<span class="spinning">⟳</span>';
+        itemCls = 'item-retry';
+        badge = `tentativa ${job.attempts}`;
+      } else {
+        icon = '✗'; itemCls = 'item-expired'; badge = 'expirado';
+      }
+      const shortId = job.jobId.slice(0, 8);
+      return `
+        <div class="dispatch-item ${itemCls}">
+          <span class="dispatch-icon">${icon}</span>
+          <div class="dispatch-info">
+            <div class="dispatch-job">${shortId}…</div>
+            <div class="dispatch-email">${job.playerEmail}</div>
+          </div>
+          <span class="dispatch-badge">${badge}</span>
+        </div>`;
+    }).join('');
+  }
+
+  function handleDispatchStatus(payload) {
+    jobsMap.set(payload.jobId, payload);
+    renderDispatch();
+    if (payload.status === 'sent') {
+      setTimeout(() => {
+        jobsMap.delete(payload.jobId);
+        renderDispatch();
+      }, 10000);
+    }
+  }
+
+  // ─── Registration form ─────────────────────────────────────────────────────
+
+  const p1Input     = document.getElementById('p1-email');
+  const p2Input     = document.getElementById('p2-email');
+  const registerBtn = document.getElementById('register-btn');
+  const feedback    = document.getElementById('register-feedback');
+
+  function syncRegisterBtn() {
+    registerBtn.disabled = !p1Input.value.trim() || !p2Input.value.trim();
+  }
+  p1Input.addEventListener('input', syncRegisterBtn);
+  p2Input.addEventListener('input', syncRegisterBtn);
+
+  registerBtn.addEventListener('click', async () => {
+    registerBtn.disabled = true;
+    feedback.textContent = '';
+    try {
+      const res = await fetch('/api/players', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player1Email: p1Input.value.trim(),
+          player2Email: p2Input.value.trim(),
+        }),
+      });
+      if (res.ok) {
+        feedback.textContent = 'Jogadores registrados!';
+        feedback.className   = 'feedback ok';
+      } else {
+        const data = await res.json();
+        feedback.textContent = data.error || 'Erro ao registrar';
+        feedback.className   = 'feedback err';
+        registerBtn.disabled = false;
+      }
+    } catch {
+      feedback.textContent = 'Erro de conexão';
+      feedback.className   = 'feedback err';
+      registerBtn.disabled = false;
+    }
+  });
+
+  // ─── Socket.IO ─────────────────────────────────────────────────────────────
+
+  const socket = io();
+  socket.on('eSense',          (payload) => updatePlayer(payload.player, payload));
+  socket.on('raceStarted',     ()        => enterRacePhase());
+  socket.on('dispatchStatus',  (payload) => handleDispatchStatus(payload));
+
+  // ─── Init: detectar sessão ativa ───────────────────────────────────────────
+
+  async function init() {
+    try {
+      const res  = await fetch('/api/session/current');
+      const data = await res.json();
+      if (data.status === 'active') enterRacePhase();
+    } catch {
+      // sem sessão ativa — permanece na fase SETUP
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
