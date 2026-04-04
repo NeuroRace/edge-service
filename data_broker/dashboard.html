@@ -344,6 +344,17 @@
 </div>
 
 <script>
+  // ─── Utils ─────────────────────────────────────────────────────────────────
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   // ─── Charts ────────────────────────────────────────────────────────────────
 
   function createChart(canvasId, borderColor) {
@@ -451,21 +462,27 @@
       } else {
         icon = '✗'; itemCls = 'item-expired'; badge = 'expirado';
       }
-      const shortId = job.jobId.slice(0, 8);
+      const shortId = escapeHtml(job.jobId.slice(0, 8));
+      const safeEmail = escapeHtml(job.playerEmail);
+      const safeBadge = escapeHtml(badge);
       return `
         <div class="dispatch-item ${itemCls}">
           <span class="dispatch-icon">${icon}</span>
           <div class="dispatch-info">
             <div class="dispatch-job">${shortId}…</div>
-            <div class="dispatch-email">${job.playerEmail}</div>
+            <div class="dispatch-email">${safeEmail}</div>
           </div>
-          <span class="dispatch-badge">${badge}</span>
+          <span class="dispatch-badge">${safeBadge}</span>
         </div>`;
     }).join('');
   }
 
   function handleDispatchStatus(payload) {
     jobsMap.set(payload.jobId, payload);
+    if (jobsMap.size > 100) {
+      const [oldestKey] = jobsMap.keys();
+      jobsMap.delete(oldestKey);
+    }
     renderDispatch();
     if (payload.status === 'sent') {
       setTimeout(() => {
@@ -503,6 +520,7 @@
       if (res.ok) {
         feedback.textContent = 'Jogadores registrados!';
         feedback.className   = 'feedback ok';
+        registerBtn.textContent = 'Registrado';
       } else {
         const data = await res.json();
         feedback.textContent = data.error || 'Erro ao registrar';
