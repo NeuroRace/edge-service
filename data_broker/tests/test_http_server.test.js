@@ -123,7 +123,10 @@ test('GET / serve dashboard.html com Content-Type text/html e CSP', async () => 
     });
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type'].includes('text/html'));
-    assert.ok(res.headers['content-security-policy'], 'CSP header deve estar presente');
+    const csp = res.headers['content-security-policy'];
+    assert.ok(csp, 'CSP header deve estar presente');
+    assert.ok(csp.includes('cdn.jsdelivr.net'), 'CSP deve permitir cdn.jsdelivr.net');
+    assert.ok(csp.includes('cdn.socket.io'), 'CSP deve permitir cdn.socket.io');
     assert.ok(res.body.includes('dashboard'), 'body deve conter conteúdo do arquivo');
   } finally {
     await new Promise((resolve) => server.close(resolve));
