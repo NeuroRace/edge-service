@@ -281,3 +281,31 @@ test('onHasFinished sem sessão ativa não enfileira job', async () => {
 
   assert.equal(redis.lists['dispatch:queue'], undefined);
 });
+
+test('getCurrentSession retorna status:none quando não há session:current', async () => {
+  const redis = createRedisFake();
+  const sm = createSessionManager(redis, config, noopLog);
+
+  const result = await sm.getCurrentSession();
+
+  assert.deepEqual(result, { status: 'none' });
+});
+
+test('getCurrentSession retorna status e emails quando sessão existe', async () => {
+  const redis = createRedisFake();
+  redis.hashes['session:current'] = {
+    id: 'sess-1',
+    status: 'active',
+    player1Email: 'p1@x.com',
+    player2Email: 'p2@x.com',
+  };
+  const sm = createSessionManager(redis, config, noopLog);
+
+  const result = await sm.getCurrentSession();
+
+  assert.deepEqual(result, {
+    status: 'active',
+    player1Email: 'p1@x.com',
+    player2Email: 'p2@x.com',
+  });
+});

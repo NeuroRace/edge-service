@@ -122,7 +122,13 @@ function createSessionManager(redis, config, log) {
     log('info', 'job_enqueued', { jobId: job.jobId, playerId, sessionId: session.id });
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished };
+  async function getCurrentSession() {
+    const s = await redis.hgetall('session:current');
+    if (!s || !s.id) return { status: 'none' };
+    return { status: s.status, player1Email: s.player1Email, player2Email: s.player2Email };
+  }
+
+  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession };
 }
 
 module.exports = { createSessionManager };
