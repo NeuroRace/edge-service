@@ -155,3 +155,69 @@ test('backoff é limitado pelo backoffMaxMs', async () => {
   const requeued = JSON.parse(redis.lists['dispatch:queue'][0]);
   assert.equal(requeued.attempts, 6);
 });
+
+test('emitFn é chamado com status:sent em dispatch bem-sucedido', async () => {
+  const redis = createRedisFake();
+  const emitted = [];
+  const mockFetch = async () => ({ ok: true });
+  const dispatcher = createDispatcher(
+    redis,
+    config,
+    noopLog,
+    mockFetch,
+    async () => {},
+    (event, payload) => emitted.push({ event, payload }),
+  );
+
+  await dispatcher.processJob(makeJob());
+
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].event, 'dispatchStatus');
+  assert.equal(emitted[0].payload.status, 'sent');
+  assert.equal(emitted[0].payload.jobId, 'job-1');
+  assert.equal(emitted[0].payload.playerId, 1);
+  assert.equal(emitted[0].payload.playerEmail, 'p@x.com');
+  assert.equal(emitted[0].payload.attempts, 0);
+  assert.ok(typeof emitted[0].payload.timestamp === 'number');
+});
+
+test('emitFn é chamado com status:retry em falha de POST', async () => {
+  const redis = createRedisFake();
+  const emitted = [];
+  const mockFetch = async () => { throw new Error('network error'); };
+  const dispatcher = createDispatcher(
+    redis,
+    config,
+    noopLog,
+    mockFetch,
+    async () => {},
+    (event, payload) => emitted.push({ event, payload }),
+  );
+
+  await dispatcher.processJob(makeJob());
+
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].payload.status, 'retry');
+  assert.equal(emitted[0].payload.attempts, 1);
+  assert.equal(emitted[0].payload.playerEmail, 'p@x.com');
+});
+
+test('emitFn é chamado com status:expired em job expirado', async () => {
+  const redis = createRedisFake();
+  const emitted = [];
+  const dispatcher = createDispatcher(
+    redis,
+    config,
+    noopLog,
+    async () => {},
+    async () => {},
+    (event, payload) => emitted.push({ event, payload }),
+  );
+
+  await dispatcher.processJob(makeJob({ expiresAt: Date.now() - 1000 }));
+
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].payload.status, 'expired');
+  assert.equal(emitted[0].payload.jobId, 'job-1');
+  assert.equal(emitted[0].payload.playerEmail, 'p@x.com');
+});

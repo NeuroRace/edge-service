@@ -1,8 +1,16 @@
 // data_broker/api_dispatcher.js
 
-async function processJob(job, redis, config, log, fetchFn, sleepFn) {
+async function processJob(job, redis, config, log, fetchFn, sleepFn, emitFn) {
   if (Date.now() > job.expiresAt) {
     log('warn', 'job_expired', { jobId: job.jobId });
+    emitFn('dispatchStatus', {
+      jobId: job.jobId,
+      playerId: job.playerId,
+      playerEmail: job.payload.email,
+      status: 'expired',
+      attempts: job.attempts,
+      timestamp: Date.now(),
+    });
     return;
   }
 
@@ -28,6 +36,14 @@ async function processJob(job, redis, config, log, fetchFn, sleepFn) {
         playerId: job.playerId,
         attempts: job.attempts,
       });
+      emitFn('dispatchStatus', {
+        jobId: job.jobId,
+        playerId: job.playerId,
+        playerEmail: job.payload.email,
+        status: 'sent',
+        attempts: job.attempts,
+        timestamp: Date.now(),
+      });
       return;
     }
 
@@ -40,6 +56,14 @@ async function processJob(job, redis, config, log, fetchFn, sleepFn) {
     );
     await sleepFn(delay);
     await redis.rpush('dispatch:queue', JSON.stringify({ ...job, attempts }));
+    emitFn('dispatchStatus', {
+      jobId: job.jobId,
+      playerId: job.playerId,
+      playerEmail: job.payload.email,
+      status: 'retry',
+      attempts,
+      timestamp: Date.now(),
+    });
     log('warn', 'dispatch_retry', {
       jobId: job.jobId,
       attempts,
@@ -54,6 +78,7 @@ function createDispatcher(
   log,
   fetchFn = fetch,
   sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  emitFn = () => {},
 ) {
   return {
     async start() {
@@ -63,13 +88,13 @@ function createDispatcher(
           if (!result) continue;
           const [, raw] = result;
           const job = JSON.parse(raw);
-          await processJob(job, redis, config, log, fetchFn, sleepFn);
+          await processJob(job, redis, config, log, fetchFn, sleepFn, emitFn);
         } catch (err) {
           log('error', 'dispatcher_loop_error', { message: err.message });
         }
       }
     },
-    processJob: (job) => processJob(job, redis, config, log, fetchFn, sleepFn),
+    processJob: (job) => processJob(job, redis, config, log, fetchFn, sleepFn, emitFn),
   };
 }
 
