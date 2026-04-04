@@ -14,9 +14,10 @@ redis.on('error', (err) =>
   log('error', 'redis_connection_error', { message: err.message }),
 );
 const session = createSessionManager(redis, config, log);
-const dispatcher = createDispatcher(redis, config, log);
 const server = createHttpServer(session);
 const io = createSocketServer(server, config.allowedOrigins);
+const emitFn = (event, payload) => io.emit(event, payload);
+const dispatcher = createDispatcher(redis, config, log, fetch, undefined, emitFn);
 
 registerSocketHandlers(io, log, session);
 dispatcher.start().catch((err) =>
