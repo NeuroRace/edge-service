@@ -309,3 +309,60 @@ test('getCurrentSession retorna status e emails quando sessão existe', async ()
     player2Email: 'p2@x.com',
   });
 });
+
+test('registerPlayers loga session_transition com to:setup e emails', async () => {
+  const redis = createRedisFake();
+  const logs = [];
+  const sm = createSessionManager(redis, config, (l, m, d) => logs.push({ l, m, d }));
+
+  await sm.registerPlayers('p1@x.com', 'p2@x.com');
+
+  const t = logs.find((entry) => entry.m === 'session_transition');
+  assert.ok(t, 'deve existir log session_transition');
+  assert.equal(t.d.from, 'none');
+  assert.equal(t.d.to, 'setup');
+  assert.equal(t.d.player1Email, 'p1@x.com');
+  assert.equal(t.d.player2Email, 'p2@x.com');
+});
+
+test('onRaceStarted loga session_transition com from:setup to:active e sessionId', async () => {
+  const redis = createRedisFake();
+  const logs = [];
+  redis.hashes['pending:players'] = {
+    player1Email: 'a@x.com',
+    player1Uuid: '',
+    player2Email: 'b@x.com',
+    player2Uuid: '',
+  };
+  const sm = createSessionManager(redis, config, (l, m, d) => logs.push({ l, m, d }));
+
+  await sm.onRaceStarted();
+
+  const t = logs.find((entry) => entry.m === 'session_transition');
+  assert.ok(t, 'deve existir log session_transition');
+  assert.equal(t.d.from, 'setup');
+  assert.equal(t.d.to, 'active');
+  assert.ok(t.d.sessionId, 'sessionId deve ser preenchido');
+});
+
+test('onHasFinished para último player loga session_transition com to:finished', async () => {
+  const redis = createRedisFake();
+  const logs = [];
+  redis.hashes['session:current'] = {
+    id: 'sess-1',
+    startedAt: '1000000000',
+    player1IsBot: 'false',
+    player1Email: 'p1@x.com',
+    player1Uuid: '',
+    player2IsBot: 'true', // player 2 é bot → player 1 é o último
+  };
+  const sm = createSessionManager(redis, config, (l, m, d) => logs.push({ l, m, d }));
+
+  await sm.onHasFinished({ playerId: 1 });
+
+  const t = logs.find((entry) => entry.m === 'session_transition');
+  assert.ok(t, 'deve existir log session_transition');
+  assert.equal(t.d.from, 'active');
+  assert.equal(t.d.to, 'finished');
+  assert.equal(t.d.sessionId, 'sess-1');
+});
