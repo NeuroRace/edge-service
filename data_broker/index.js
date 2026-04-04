@@ -9,10 +9,7 @@ const { createSocketServer, registerSocketHandlers } = require('./socket_handler
 
 const config = loadBrokerConfig();
 const log = createBrokerLogger();
-const redis = createRedisClient(config);
-redis.on('error', (err) =>
-  log('error', 'redis_connection_error', { message: err.message }),
-);
+const redis = createRedisClient(config, log);
 const session = createSessionManager(redis, config, log);
 const server = createHttpServer(session);
 const io = createSocketServer(server, config.allowedOrigins);
@@ -23,6 +20,7 @@ registerSocketHandlers(io, log, session);
 dispatcher.start().catch((err) =>
   log('error', 'dispatcher_fatal', { message: err?.message ?? String(err) }),
 );
+dispatcher.startHealthMonitor(config.queueHealthIntervalMs);
 
 server.listen(config.port, () => {
   log('info', 'broker_listening', {
