@@ -256,8 +256,11 @@ test('startHealthMonitor loga queue_health com queue_size e retorna função de 
     (l, m, d) => logs.push({ l, m, d }),
   );
 
-  const stop = dispatcher.startHealthMonitor(1); // 1ms para disparar rapidamente no teste
-  await new Promise((r) => setTimeout(r, 20));
+  const stop = dispatcher.startHealthMonitor(5); // 5ms interval
+  const deadline = Date.now() + 500;
+  while (!logs.find((e) => e.m === 'queue_health') && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5));
+  }
   stop();
 
   const healthLog = logs.find((entry) => entry.m === 'queue_health');

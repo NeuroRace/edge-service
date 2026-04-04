@@ -98,7 +98,11 @@ function createDispatcher(
         const size = await redis.llen('dispatch:queue');
         log('info', 'queue_health', { queue_size: size });
       } catch (err) {
-        log('error', 'queue_health_error', { message: err.message });
+        try {
+          log('error', 'queue_health_error', { message: err.message });
+        } catch {
+          // logger is broken — nothing more we can do
+        }
       }
     }, intervalMs);
     if (timer.unref) timer.unref();
