@@ -81,20 +81,42 @@ function createDispatcher(
   // emitFn(event, payload) — must be synchronous (e.g. io.emit)
   emitFn = () => {},
 ) {
+  async function processDequeue() {
+    const result = await redis.blpop('dispatch:queue', 0);
+    if (!result) return;
+    const [, raw] = result;
+    const job = JSON.parse(raw);
+    const queueSize = await redis.llen('dispatch:queue');
+    log('info', 'dispatcher_dequeued', { jobId: job.jobId, queue_size: queueSize });
+    await processJob(job, redis, config, log, fetchFn, sleepFn, emitFn);
+  }
+
+  function startHealthMonitor(intervalMs) {
+    if (!intervalMs || intervalMs <= 0) return () => {};
+    const timer = setInterval(async () => {
+      try {
+        const size = await redis.llen('dispatch:queue');
+        log('info', 'queue_health', { queue_size: size });
+      } catch (err) {
+        log('error', 'queue_health_error', { message: err.message });
+      }
+    }, intervalMs);
+    if (timer.unref) timer.unref();
+    return () => clearInterval(timer);
+  }
+
   return {
     async start() {
       while (true) {
         try {
-          const result = await redis.blpop('dispatch:queue', 0);
-          if (!result) continue;
-          const [, raw] = result;
-          const job = JSON.parse(raw);
-          await processJob(job, redis, config, log, fetchFn, sleepFn, emitFn);
+          await processDequeue();
         } catch (err) {
           log('error', 'dispatcher_loop_error', { message: err.message });
         }
       }
     },
+    processDequeue,
+    startHealthMonitor,
     processJob: (job) => processJob(job, redis, config, log, fetchFn, sleepFn, emitFn),
   };
 }
