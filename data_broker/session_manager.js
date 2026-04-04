@@ -66,7 +66,7 @@ function createSessionManager(redis, config, log) {
     if (payload.source === 'bot') return;
 
     const session = await redis.hgetall('session:current');
-    if (!session) {
+    if (!session || !session.id) {
       log('warn', 'esense_no_active_session', { player: payload.player });
       return;
     }

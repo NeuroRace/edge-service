@@ -250,3 +250,34 @@ test('onHasFinished duplicado é ignorado', async () => {
 
   assert.equal(redis.lists['dispatch:queue'], undefined);
 });
+
+test('onEsense sem sessão ativa não faz RPUSH', async () => {
+  const redis = createRedisFake();
+  // sem session:current no Redis
+  const sm = createSessionManager(redis, config, noopLog);
+
+  await sm.onEsense({
+    player: 1,
+    source: 'real',
+    attention: 80,
+    meditation: 55,
+    eegPower: {},
+    poorSignalLevel: 0,
+    status: 'ok',
+    timeStamp: 1000,
+  });
+
+  assert.equal(redis.lists['session:undefined:player:1:packets'], undefined);
+  // nenhuma lista deve ter sido criada
+  assert.equal(Object.keys(redis.lists).length, 0);
+});
+
+test('onHasFinished sem sessão ativa não enfileira job', async () => {
+  const redis = createRedisFake();
+  // sem session:current no Redis
+  const sm = createSessionManager(redis, config, noopLog);
+
+  await sm.onHasFinished({ playerId: 1 });
+
+  assert.equal(redis.lists['dispatch:queue'], undefined);
+});
