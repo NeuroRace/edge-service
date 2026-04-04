@@ -33,16 +33,16 @@ async function processJob(job, redis, config, log, fetchFn, sleepFn) {
 
     throw new Error(`HTTP ${res.status}`);
   } catch (err) {
-    job.attempts++;
+    const attempts = job.attempts + 1;
     const delay = Math.min(
-      config.backoffBaseMs * Math.pow(2, job.attempts),
+      config.backoffBaseMs * Math.pow(2, attempts),
       config.backoffMaxMs,
     );
     await sleepFn(delay);
-    await redis.rpush('dispatch:queue', JSON.stringify(job));
+    await redis.rpush('dispatch:queue', JSON.stringify({ ...job, attempts }));
     log('warn', 'dispatch_retry', {
       jobId: job.jobId,
-      attempts: job.attempts,
+      attempts,
       delay,
     });
   }
@@ -58,9 +58,15 @@ function createDispatcher(
   return {
     async start() {
       while (true) {
-        const [, raw] = await redis.blpop('dispatch:queue', 0);
-        const job = JSON.parse(raw);
-        await processJob(job, redis, config, log, fetchFn, sleepFn);
+        try {
+          const result = await redis.blpop('dispatch:queue', 0);
+          if (!result) continue;
+          const [, raw] = result;
+          const job = JSON.parse(raw);
+          await processJob(job, redis, config, log, fetchFn, sleepFn);
+        } catch (err) {
+          log('error', 'dispatcher_loop_error', { message: err.message });
+        }
       }
     },
     processJob: (job) => processJob(job, redis, config, log, fetchFn, sleepFn),
