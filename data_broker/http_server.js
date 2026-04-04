@@ -10,6 +10,12 @@ function createHttpServer(session) {
     }
 
     if (req.method === 'POST' && req.url === '/api/players') {
+      if (!session) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'session_not_configured' }));
+        return;
+      }
+
       let body = '';
       req.on('data', (chunk) => { body += chunk; });
       req.on('end', async () => {
@@ -24,10 +30,15 @@ function createHttpServer(session) {
 
         const player1Email = String(data.player1Email || '');
         const player2Email = String(data.player2Email || '');
-        const result = await session.registerPlayers(player1Email, player2Email);
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
+        try {
+          const result = await session.registerPlayers(player1Email, player2Email);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'internal_error' }));
+        }
       });
       return;
     }
