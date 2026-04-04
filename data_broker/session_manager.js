@@ -129,7 +129,7 @@ function createSessionManager(redis, config, log) {
     await redis.hset('session:current', dispatchedKey, 'true');
     log('info', 'job_enqueued', { jobId: job.jobId, playerId, sessionId: session.id });
 
-    const otherPlayerId = playerId == 1 ? 2 : 1;
+    const otherPlayerId = playerId === 1 ? 2 : 1;
     const otherIsBot = session[`player${otherPlayerId}IsBot`] === 'true';
     const otherDispatched = session[`player${otherPlayerId}Dispatched`] === 'true';
     if (otherIsBot || otherDispatched) {

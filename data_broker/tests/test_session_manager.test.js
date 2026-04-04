@@ -342,7 +342,7 @@ test('onRaceStarted loga session_transition com from:setup to:active e sessionId
   assert.ok(t, 'deve existir log session_transition');
   assert.equal(t.d.from, 'setup');
   assert.equal(t.d.to, 'active');
-  assert.ok(t.d.sessionId, 'sessionId deve ser preenchido');
+  assert.match(t.d.sessionId, /^[0-9a-f-]{36}$/, 'sessionId deve ser um UUID');
 });
 
 test('onHasFinished para último player loga session_transition com to:finished', async () => {
@@ -365,4 +365,29 @@ test('onHasFinished para último player loga session_transition com to:finished'
   assert.equal(t.d.from, 'active');
   assert.equal(t.d.to, 'finished');
   assert.equal(t.d.sessionId, 'sess-1');
+});
+
+test('onHasFinished loga session_transition com to:finished quando outro player já despachou', async () => {
+  const redis = createRedisFake();
+  const logs = [];
+  redis.hashes['session:current'] = {
+    id: 'sess-2',
+    startedAt: '1000000000',
+    player1IsBot: 'false',
+    player1Email: 'p1@x.com',
+    player1Uuid: '',
+    player2IsBot: 'false',
+    player2Email: 'p2@x.com',
+    player2Uuid: '',
+    player2Dispatched: 'true', // player 2 já terminou
+  };
+  const sm = createSessionManager(redis, config, (l, m, d) => logs.push({ l, m, d }));
+
+  await sm.onHasFinished({ playerId: 1 });
+
+  const t = logs.find((entry) => entry.m === 'session_transition');
+  assert.ok(t, 'deve existir log session_transition');
+  assert.equal(t.d.from, 'active');
+  assert.equal(t.d.to, 'finished');
+  assert.equal(t.d.sessionId, 'sess-2');
 });
