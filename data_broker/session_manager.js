@@ -80,7 +80,7 @@ function createSessionManager(redis, config, log) {
   async function onHasFinished(payload) {
     const { playerId } = payload;
     const session = await redis.hgetall('session:current');
-    if (!session) {
+    if (!session || !session.id) {
       log('warn', 'has_finished_no_active_session', { playerId });
       return;
     }

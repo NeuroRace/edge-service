@@ -17,8 +17,20 @@ function createHttpServer(session) {
       }
 
       let body = '';
-      req.on('data', (chunk) => { body += chunk; });
+      let bodySize = 0;
+      const MAX_BODY_BYTES = 4096;
+      req.on('data', (chunk) => {
+        bodySize += chunk.length;
+        if (bodySize > MAX_BODY_BYTES) {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'payload_too_large' }));
+          req.destroy();
+          return;
+        }
+        body += chunk;
+      });
       req.on('end', async () => {
+        if (bodySize > MAX_BODY_BYTES) return;
         let data;
         try {
           data = JSON.parse(body);
