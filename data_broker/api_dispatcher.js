@@ -78,6 +78,7 @@ function createDispatcher(
   log,
   fetchFn = fetch,
   sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  // emitFn(event, payload) — must be synchronous (e.g. io.emit)
   emitFn = () => {},
 ) {
   return {
