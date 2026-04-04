@@ -102,3 +102,76 @@ test('rota desconhecida retorna 404', async () => {
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('GET / serve dashboard.html com Content-Type text/html e CSP', async () => {
+  const session = { getCurrentSession: async () => ({ status: 'none' }) };
+  const server = createHttpServer(session);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const addr = server.address();
+    const res = await new Promise((resolve, reject) => {
+      const req = http.request(
+        { hostname: '127.0.0.1', port: addr.port, path: '/', method: 'GET' },
+        (r) => {
+          let data = '';
+          r.on('data', (c) => { data += c; });
+          r.on('end', () => resolve({ status: r.statusCode, headers: r.headers, body: data }));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(res.status, 200);
+    assert.ok(res.headers['content-type'].includes('text/html'));
+    assert.ok(res.headers['content-security-policy'], 'CSP header deve estar presente');
+    assert.ok(res.body.includes('dashboard'), 'body deve conter conteúdo do arquivo');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('GET /api/session/current retorna status:none quando sem sessão ativa', async () => {
+  const session = { getCurrentSession: async () => ({ status: 'none' }) };
+  const server = createHttpServer(session);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const res = await makeRequest(server, 'GET', '/api/session/current');
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, { status: 'none' });
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('GET /api/session/current retorna sessão ativa com emails', async () => {
+  const session = {
+    getCurrentSession: async () => ({
+      status: 'active',
+      player1Email: 'p1@x.com',
+      player2Email: 'p2@x.com',
+    }),
+  };
+  const server = createHttpServer(session);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const res = await makeRequest(server, 'GET', '/api/session/current');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.status, 'active');
+    assert.equal(res.body.player1Email, 'p1@x.com');
+    assert.equal(res.body.player2Email, 'p2@x.com');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('GET /api/session/current retorna 503 quando session não configurado', async () => {
+  const server = createHttpServer(null);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const res = await makeRequest(server, 'GET', '/api/session/current');
+    assert.equal(res.status, 503);
+    assert.equal(res.body.error, 'session_not_configured');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
