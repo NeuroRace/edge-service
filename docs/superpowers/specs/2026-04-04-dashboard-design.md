@@ -157,8 +157,22 @@ Arquivo único com toda a UI. Estrutura interna:
 
 Duas novas rotas:
 
-- `GET /` — lê `dashboard.html` com `fs.readFile`, responde com `Content-Type: text/html; charset=utf-8`
+- `GET /` — lê `dashboard.html` com `fs.readFile`, responde com `Content-Type: text/html; charset=utf-8` e cabeçalho CSP (ver abaixo)
 - `GET /api/session/current` — chama `session.getCurrentSession()`, retorna `{ status, player1Email, player2Email }` ou `{ status: "none" }`
+
+**Content-Security-Policy para `GET /`:**
+
+O `http_server.js` atual não define cabeçalhos de segurança. A rota `GET /` deve incluir o header:
+
+```
+Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.socket.io 'unsafe-inline'; style-src 'self' 'unsafe-inline'
+```
+
+- `https://cdn.jsdelivr.net` — Chart.js
+- `https://cdn.socket.io` — Socket.IO client
+- `'unsafe-inline'` — necessário para `<style>` e `<script>` inline no `dashboard.html`
+
+Nenhuma outra rota recebe esse header (não se aplica a JSON endpoints).
 
 ### `data_broker/session_manager.js`
 
@@ -176,6 +190,21 @@ Exposto no objeto retornado por `createSessionManager`.
 
 ### `data_broker/api_dispatcher.js`
 
+Assinatura definitiva:
+
+```js
+function createDispatcher(
+  redis,
+  config,
+  log,
+  fetchFn = fetch,
+  sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  emitFn = () => {},
+)
+```
+
+`emitFn` é o **6º parâmetro** — os testes existentes que passam apenas `redis, config, log, fetchFn, sleepFn` não precisam de alteração.
+
 - `createDispatcher` recebe parâmetro opcional `emitFn = () => {}`
 - Chamado em três pontos de `processJob`:
   - Sucesso HTTP: `emitFn('dispatchStatus', { jobId, playerId, playerEmail, status: 'sent', attempts, timestamp })`
@@ -190,7 +219,7 @@ const emitFn = (event, payload) => io.emit(event, payload);
 const dispatcher = createDispatcher(redis, config, log, fetch, undefined, emitFn);
 ```
 
-> A assinatura de `createDispatcher` mantém `fetchFn` e `sleepFn` antes de `emitFn` para não quebrar os testes existentes.
+`undefined` preserva o `sleepFn` padrão. `emitFn` ocupa a 6ª posição conforme a assinatura acima.
 
 ---
 
