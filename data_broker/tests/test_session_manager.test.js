@@ -106,6 +106,7 @@ test('onRaceStarted creates session:current and removes pending:players', async 
   assert.ok(session, 'session:current deve existir');
   assert.ok(session.id, 'id deve ser gerado');
   assert.equal(session.status, 'active');
+  assert.ok(Number(session.startedAt) > 0, 'startedAt deve ser um timestamp numérico positivo');
   assert.equal(session.player1Email, 'a@x.com');
   assert.equal(session.player1IsBot, 'false');
   assert.equal(session.player2Email, 'b@x.com');
