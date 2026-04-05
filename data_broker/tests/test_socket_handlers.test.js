@@ -72,3 +72,84 @@ test('keeps passthrough events permissive', () => {
   assert.deepEqual(socket.broadcast.emitted, [{ event: 'gameEvent', payload }]);
   assert.equal(logs[0].message, 'event_received');
 });
+
+test('chama session.onEsense quando eSense payload é válido', () => {
+  const socket = createSocketDouble();
+  const calls = [];
+  const session = {
+    onEsense: async (p) => { calls.push({ method: 'onEsense', payload: p }); },
+  };
+  const handler = createForwardEventHandler({
+    log: () => {},
+    socket,
+    event: 'eSense',
+    session,
+  });
+
+  const payload = {
+    player: 1,
+    attention: 90,
+    meditation: 60,
+    eegPower: { delta: 10 },
+    poorSignalLevel: 0,
+    status: 'ok',
+    source: 'real',
+    timeStamp: 123,
+  };
+
+  handler(payload);
+
+  // onEsense é chamado de forma assíncrona (fire-and-forget)
+  return new Promise((resolve) => setImmediate(() => {
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].method, 'onEsense');
+    assert.deepEqual(calls[0].payload, payload);
+    resolve();
+  }));
+});
+
+test('não chama session quando payload é inválido', () => {
+  const socket = createSocketDouble();
+  const calls = [];
+  const session = {
+    onEsense: async () => { calls.push('onEsense'); },
+  };
+  const handler = createForwardEventHandler({
+    log: () => {},
+    socket,
+    event: 'eSense',
+    session,
+  });
+
+  // payload inválido: falta timeStamp
+  handler({ player: 1, attention: 80, meditation: 55, eegPower: {}, source: 'real', status: 'ok' });
+
+  return new Promise((resolve) => setImmediate(() => {
+    assert.equal(calls.length, 0);
+    resolve();
+  }));
+});
+
+test('não chama session quando session é undefined', () => {
+  const socket = createSocketDouble();
+  const handler = createForwardEventHandler({
+    log: () => {},
+    socket,
+    event: 'eSense',
+    // sem session
+  });
+
+  const payload = {
+    player: 1,
+    attention: 90,
+    meditation: 60,
+    eegPower: { delta: 10 },
+    poorSignalLevel: 0,
+    status: 'ok',
+    source: 'real',
+    timeStamp: 123,
+  };
+
+  // não deve lançar erro
+  assert.doesNotThrow(() => handler(payload));
+});

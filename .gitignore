@@ -15,3 +15,7 @@ __pycache__/
 gesture_detector/env
 
 env/.env
+data_broker/.env
+
+# Visual companion mockups
+.superpowers/

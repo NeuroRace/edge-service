@@ -1,10 +1,17 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   broker:
     build: ./data_broker
-    environment:
-      BROKER_PORT: 3000
-    ports: 
+    env_file:                                                                                                    
+      - ./data_broker/.env 
+    ports:
       - "3000:3000"
+    depends_on:
+      - redis
 
   simulator-a:
     build: ./eeg_acquisition
@@ -12,7 +19,7 @@ services:
       ACQ_PORT: 13854
       PACKET_INTERVAL: 1.0
     command: python simulator.py
-    ports: 
+    ports:
       - "13854:13854"
     profiles: ['sim-local', 'sim-dual']
 
@@ -35,13 +42,11 @@ services:
       ACQ_PORT: 13854
       BROKER_URL: http://broker:3000
       POOR_SIGNAL_LEVEL_THRESHOLD: 0
-      # EEG_HOST: simulator-a
       SOURCE: real
       EEG_HOST: "host.docker.internal"
     command: python acquisition_service.py
-    depends_on: 
+    depends_on:
       - broker
-      # - simulator-a
     profiles: ['sim-local', 'sim-dual', 'hybrid-local', 'live']
 
   acquisition-b:
@@ -60,7 +65,7 @@ services:
       - broker
       - simulator-b
     profiles: ['sim-local', 'hybrid-local', 'live']
-  
+
   test-client:
     build: ./test_client
     environment:
