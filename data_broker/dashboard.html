@@ -118,6 +118,7 @@
       border: 1px solid #374151;
       border-radius: 12px;
       padding: 20px;
+      position: relative;
     }
     .card-header {
       display: flex;
@@ -258,6 +259,67 @@
 
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .spinning { display: inline-block; animation: spin 1s linear infinite; }
+
+    /* Phase finished */
+    .phase-finished { background: #2d1f0a; color: #f59e0b; border-color: #f59e0b33; }
+
+    /* Nova Corrida button */
+    .new-race-btn {
+      background: transparent;
+      color: #f59e0b;
+      border: 1px solid #f59e0b55;
+      border-radius: 6px;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .new-race-btn:hover {
+      background: rgba(245,158,11,0.1);
+      border-color: #f59e0b;
+    }
+
+    /* Winner card glow */
+    .winner-p1 {
+      border-color: #6366f1;
+      box-shadow: 0 0 24px rgba(99,102,241,0.35), 0 0 8px rgba(99,102,241,0.2);
+    }
+    .winner-p2 {
+      border-color: #f59e0b;
+      box-shadow: 0 0 24px rgba(245,158,11,0.35), 0 0 8px rgba(245,158,11,0.2);
+    }
+
+    /* Winner overlay */
+    .winner-overlay {
+      position: absolute;
+      inset: 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.72);
+      border-radius: 12px;
+      z-index: 10;
+      gap: 8px;
+    }
+    .winner-trophy {
+      font-size: 52px;
+      animation: pulse-trophy 1.6s ease-in-out infinite;
+      line-height: 1;
+    }
+    .winner-text {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      color: #f9fafb;
+      text-transform: uppercase;
+    }
+
+    @keyframes pulse-trophy {
+      0%, 100% { transform: scale(1); }
+      50%       { transform: scale(1.14); }
+    }
   </style>
 </head>
 <body data-page="dashboard">
