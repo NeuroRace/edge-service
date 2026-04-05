@@ -10,11 +10,12 @@ const { createSocketServer, registerSocketHandlers } = require('./socket_handler
 const config = loadBrokerConfig();
 const log = createBrokerLogger();
 const redis = createRedisClient(config, log);
+const redisBlocking = createRedisClient(config, log);
 const session = createSessionManager(redis, config, log);
 const server = createHttpServer(session);
 const io = createSocketServer(server, config.allowedOrigins);
 const emitFn = (event, payload) => io.emit(event, payload);
-const dispatcher = createDispatcher(redis, config, log, fetch, undefined, emitFn);
+const dispatcher = createDispatcher(redisBlocking, config, log, fetch, undefined, emitFn);
 
 registerSocketHandlers(io, log, session);
 dispatcher.start().catch((err) =>
