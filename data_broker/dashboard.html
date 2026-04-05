@@ -264,7 +264,10 @@
 
 <header class="header">
   <span class="logo">NeuroRace</span>
-  <span id="phase-badge" class="phase-badge phase-setup">● SETUP</span>
+  <div style="display:flex;gap:12px;align-items:center">
+    <button id="new-race-btn" class="new-race-btn" style="display:none" onclick="location.reload()">↺ Nova Corrida</button>
+    <span id="phase-badge" class="phase-badge phase-setup">● SETUP</span>
+  </div>
 </header>
 
 <div id="setup-section" class="setup-section">
@@ -278,7 +281,11 @@
   <div class="players-area">
 
     <!-- Player 1 -->
-    <div class="player-card">
+    <div class="player-card" id="card-p1">
+      <div class="winner-overlay" id="winner-p1" style="display:none">
+        <span class="winner-trophy">🏆</span>
+        <span class="winner-text">FINALIZADO</span>
+      </div>
       <div class="card-header">
         <span class="player-label">Player 1</span>
         <span id="p1-signal" class="signal-badge signal-waiting">● AGUARDANDO</span>
@@ -306,7 +313,11 @@
     </div>
 
     <!-- Player 2 -->
-    <div class="player-card">
+    <div class="player-card" id="card-p2">
+      <div class="winner-overlay" id="winner-p2" style="display:none">
+        <span class="winner-trophy">🏆</span>
+        <span class="winner-text">FINALIZADO</span>
+      </div>
       <div class="card-header">
         <span class="player-label">Player 2</span>
         <span id="p2-signal" class="signal-badge signal-waiting">● AGUARDANDO</span>
@@ -413,6 +424,7 @@
   // ─── Player update ─────────────────────────────────────────────────────────
 
   function updatePlayer(playerNum, payload) {
+    if (playerFinished[playerNum]) return;
     const p = playerNum;
     document.getElementById(`p${p}-attention`).innerHTML =
       `${escapeHtml(payload.attention)}<span class="metric-unit">%</span>`;
@@ -438,9 +450,40 @@
     badge.className   = 'phase-badge phase-race';
   }
 
+  // ─── Finished phase ───────────────────────────────────────────────────────
+
+  function freezeCard(playerNum) {
+    playerFinished[playerNum] = true;
+    document.getElementById(`winner-p${playerNum}`).style.display = 'flex';
+    document.getElementById(`card-p${playerNum}`).classList.add(`winner-p${playerNum}`);
+  }
+
+  function checkFullyFinished() {
+    const p1Done = playerFinished[1] || playerIsBot[1];
+    const p2Done = playerFinished[2] || playerIsBot[2];
+    if (p1Done && p2Done) enterFinishedPhase();
+  }
+
+  function enterFinishedPhase() {
+    const badge = document.getElementById('phase-badge');
+    badge.textContent = '● FINALIZADO';
+    badge.className   = 'phase-badge phase-finished';
+    document.getElementById('new-race-btn').style.display = 'block';
+  }
+
+  function handleHasFinished({ playerId }) {
+    freezeCard(playerId);
+    checkFullyFinished();
+  }
+
   // ─── Dispatch queue ────────────────────────────────────────────────────────
 
   const jobsMap = new Map();
+
+  // ─── Finished state ──────────────────────────────────────────────────────────
+
+  const playerFinished = { 1: false, 2: false };
+  const playerIsBot    = { 1: false, 2: false };
 
   function renderDispatch() {
     const list = document.getElementById('dispatch-list');
@@ -540,6 +583,7 @@
   socket.on('eSense',          (payload) => updatePlayer(payload.player, payload));
   socket.on('raceStarted',     ()        => enterRacePhase());
   socket.on('dispatchStatus',  (payload) => handleDispatchStatus(payload));
+  socket.on('hasFinished',     (payload) => handleHasFinished(payload));
 
   // ─── Init: detectar sessão ativa ───────────────────────────────────────────
 
@@ -547,6 +591,10 @@
     try {
       const res  = await fetch('/api/session/current');
       const data = await res.json();
+      if (data.player1Email !== undefined) {
+        playerIsBot[1] = data.player1Email === '';
+        playerIsBot[2] = data.player2Email === '';
+      }
       if (data.status === 'active') enterRacePhase();
     } catch {
       // sem sessão ativa — permanece na fase SETUP

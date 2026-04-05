@@ -178,3 +178,30 @@ test('GET /api/session/current retorna 503 quando session não configurado', asy
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('GET / — HTML contém elementos da fase FINISHED', async () => {
+  const session = { getCurrentSession: async () => ({ status: 'none' }) };
+  const server = createHttpServer(session);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const addr = server.address();
+    const res = await new Promise((resolve, reject) => {
+      const req = http.request(
+        { hostname: '127.0.0.1', port: addr.port, path: '/', method: 'GET' },
+        (r) => {
+          let data = '';
+          r.on('data', (c) => { data += c; });
+          r.on('end', () => resolve({ body: data }));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+    assert.ok(res.body.includes('new-race-btn'),      'deve conter botão nova corrida');
+    assert.ok(res.body.includes('winner-overlay'),    'deve conter overlay de vencedor');
+    assert.ok(res.body.includes('handleHasFinished'), 'deve conter handler hasFinished');
+    assert.ok(res.body.includes('playerFinished'),    'deve conter estado playerFinished');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
