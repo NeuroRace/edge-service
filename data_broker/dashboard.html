@@ -618,8 +618,8 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          player1Email: p1Input.value.trim(),
-          player2Email: p2Input.value.trim(),
+          player1Email: p1Input.value.trim().toLowerCase() || "", 
+          player2Email: p2Input.value.trim().toLowerCase() || "",
         }),
       });
       if (res.ok) {
