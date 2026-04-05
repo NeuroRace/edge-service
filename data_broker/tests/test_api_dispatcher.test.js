@@ -221,3 +221,49 @@ test('emitFn é chamado com status:expired em job expirado', async () => {
   assert.equal(emitted[0].payload.jobId, 'job-1');
   assert.equal(emitted[0].payload.playerEmail, 'p@x.com');
 });
+
+test('processDequeue loga dispatcher_dequeued com jobId e queue_size corretos', async () => {
+  const logs = [];
+  const job = makeJob();
+  const redis = {
+    async blpop() { return ['dispatch:queue', JSON.stringify(job)]; },
+    async llen() { return 7; },
+    async rpush() {},
+  };
+  const dispatcher = createDispatcher(
+    redis,
+    config,
+    (l, m, d) => logs.push({ l, m, d }),
+    async () => ({ ok: true }),
+  );
+
+  await dispatcher.processDequeue();
+
+  const dequeueLog = logs.find((entry) => entry.m === 'dispatcher_dequeued');
+  assert.ok(dequeueLog, 'deve logar dispatcher_dequeued');
+  assert.equal(dequeueLog.d.jobId, 'job-1');
+  assert.equal(dequeueLog.d.queue_size, 7);
+});
+
+test('startHealthMonitor loga queue_health com queue_size e retorna função de stop', async () => {
+  const logs = [];
+  const redis = {
+    async llen() { return 5; },
+  };
+  const dispatcher = createDispatcher(
+    redis,
+    config,
+    (l, m, d) => logs.push({ l, m, d }),
+  );
+
+  const stop = dispatcher.startHealthMonitor(5); // 5ms interval
+  const deadline = Date.now() + 500;
+  while (!logs.find((e) => e.m === 'queue_health') && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  stop();
+
+  const healthLog = logs.find((entry) => entry.m === 'queue_health');
+  assert.ok(healthLog, 'deve logar queue_health');
+  assert.equal(healthLog.d.queue_size, 5);
+});

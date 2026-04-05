@@ -25,6 +25,13 @@ function createSessionManager(redis, config, log) {
     );
     await redis.expire('pending:players', 3600);
 
+    log('info', 'session_transition', {
+      from: 'none',
+      to: 'setup',
+      player1Email,
+      player2Email,
+    });
+
     return { player1, player2 };
   }
 
@@ -60,6 +67,7 @@ function createSessionManager(redis, config, log) {
       player1IsBot: player1Email === '',
       player2IsBot: player2Email === '',
     });
+    log('info', 'session_transition', { from: 'setup', to: 'active', sessionId: id });
   }
 
   async function onEsense(payload) {
@@ -120,6 +128,13 @@ function createSessionManager(redis, config, log) {
     await redis.rpush('dispatch:queue', JSON.stringify(job));
     await redis.hset('session:current', dispatchedKey, 'true');
     log('info', 'job_enqueued', { jobId: job.jobId, playerId, sessionId: session.id });
+
+    const otherPlayerId = playerId === 1 ? 2 : 1;
+    const otherIsBot = session[`player${otherPlayerId}IsBot`] === 'true';
+    const otherDispatched = session[`player${otherPlayerId}Dispatched`] === 'true';
+    if (otherIsBot || otherDispatched) {
+      log('info', 'session_transition', { from: 'active', to: 'finished', sessionId: session.id });
+    }
   }
 
   async function getCurrentSession() {
