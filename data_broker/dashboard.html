@@ -465,6 +465,7 @@
   }
 
   function enterFinishedPhase() {
+    if (document.getElementById('new-race-btn').style.display === 'block') return;
     const badge = document.getElementById('phase-badge');
     badge.textContent = '● FINALIZADO';
     badge.className   = 'phase-badge phase-finished';
@@ -479,9 +480,6 @@
   // ─── Dispatch queue ────────────────────────────────────────────────────────
 
   const jobsMap = new Map();
-
-  // ─── Finished state ──────────────────────────────────────────────────────────
-
   const playerFinished = { 1: false, 2: false };
   const playerIsBot    = { 1: false, 2: false };
 
@@ -594,6 +592,7 @@
       if (data.player1Email !== undefined) {
         playerIsBot[1] = data.player1Email === '';
         playerIsBot[2] = data.player2Email === '';
+        checkFullyFinished(); // catch hasFinished events that arrived before init completed
       }
       if (data.status === 'active') enterRacePhase();
     } catch {
