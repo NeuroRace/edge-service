@@ -35,12 +35,12 @@ function createForwardEventHandler({ log, socket, event, session }) {
       return;
     }
 
-    log('info', 'event_received', {
-      event,
-      socketId: socket.id,
-      payload,
-      enforced: ENFORCED_EVENTS.has(event),
-    });
+    // log('info', 'event_received', {
+    //   event,
+    //   socketId: socket.id,
+    //   payload,
+    //   enforced: ENFORCED_EVENTS.has(event),
+    // });
     socket.broadcast.emit(event, payload);
 
     if (session) {

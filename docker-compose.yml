@@ -6,9 +6,8 @@ services:
 
   broker:
     build: ./data_broker
-    environment:
-      BROKER_PORT: 3000
-      REDIS_URL: redis://redis:6379
+    env_file:                                                                                                    
+      - ./data_broker/.env 
     ports:
       - "3000:3000"
     depends_on:
