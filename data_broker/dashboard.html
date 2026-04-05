@@ -465,7 +465,8 @@
   }
 
   function enterFinishedPhase() {
-    if (document.getElementById('new-race-btn').style.display === 'block') return;
+    if (finishedPhaseEntered) return;
+    finishedPhaseEntered = true;
     const badge = document.getElementById('phase-badge');
     badge.textContent = '● FINALIZADO';
     badge.className   = 'phase-badge phase-finished';
@@ -482,6 +483,7 @@
   const jobsMap = new Map();
   const playerFinished = { 1: false, 2: false };
   const playerIsBot    = { 1: false, 2: false };
+  let   finishedPhaseEntered = false;
 
   function renderDispatch() {
     const list = document.getElementById('dispatch-list');
@@ -592,7 +594,8 @@
       if (data.player1Email !== undefined) {
         playerIsBot[1] = data.player1Email === '';
         playerIsBot[2] = data.player2Email === '';
-        checkFullyFinished(); // catch hasFinished events that arrived before init completed
+        // Re-check in case hasFinished arrived before init() completed (human vs bot race)
+        if (!playerIsBot[1] || !playerIsBot[2]) checkFullyFinished();
       }
       if (data.status === 'active') enterRacePhase();
     } catch {
