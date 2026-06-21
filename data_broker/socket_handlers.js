@@ -20,11 +20,12 @@ function createSocketServer(server, allowedOrigins) {
   });
 }
 
-function createForwardEventHandler({ log, socket, event }) {
+function createForwardEventHandler({ log, socket, event, runtimeState }) {
   return (payload) => {
     const validationError = validateEventPayload(event, payload);
 
     if (validationError !== null) {
+      runtimeState.markEventRejected();
       log('warn', 'event_rejected', {
         event,
         socketId: socket.id,
@@ -34,6 +35,7 @@ function createForwardEventHandler({ log, socket, event }) {
       return;
     }
 
+    runtimeState.markEventValidated();
     log('info', 'event_received', {
       event,
       socketId: socket.id,
@@ -44,16 +46,18 @@ function createForwardEventHandler({ log, socket, event }) {
   };
 }
 
-function registerSocketHandlers(io, log) {
+function registerSocketHandlers(io, log, runtimeState) {
   io.on('connection', (socket) => {
+    runtimeState.markClientConnected();
     log('info', 'client_connected', { socketId: socket.id });
 
     socket.on('disconnect', (reason) => {
+      runtimeState.markClientDisconnected();
       log('info', 'client_disconnected', { socketId: socket.id, reason });
     });
 
     for (const event of BROKER_EVENTS) {
-      socket.on(event, createForwardEventHandler({ log, socket, event }));
+      socket.on(event, createForwardEventHandler({ log, socket, event, runtimeState }));
     }
   });
 }

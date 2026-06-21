@@ -23,6 +23,6 @@ services:
       EEG_HOST: host.docker.internal
       SOURCE: real
     command: python acquisition_service.py
-    depends_on: 
-      # - simulator-b
+    # Sem depends_on: no perfil collector o acquisition-b fala com EEG/broker externos
+    # (host.docker.internal / IP remoto), nao com servicos deste compose.
     profiles: ['sim-dual', 'live']

@@ -9,6 +9,7 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
 - Modulos internos: `config.js`, `logger.js`, `http_server.js`, `socket_handlers.js`, `event_contracts.js`
 - Porta padrao: `3000`
 - Health check HTTP: `GET /health`
+- Health payload atual: `status`, `service`, `uptimeSeconds`, `connections`, `validatedEvents`, `rejectedEvents`
 - Eventos repassados sem alteracao: `blink`, `eSense`, `handGesture`, `raceStarted`, `hasFinished`, `gameEvent`
 - Eventos validados no broker nesta fase: `eSense`, `handGesture`
 
@@ -81,6 +82,7 @@ Regras validadas no broker:
 
 - O acquisition agora tenta reconectar a fonte EEG e o broker em falhas recuperaveis
 - O entry point `eeg_acquisition/acquisition_service.py` agora apenas compoe `acquisition_config`, `acquisition_runner`, `acquisition_clients`, `acquisition_pipeline` e `acquisition_core`
+- Logs do acquisition agora seguem formato JSON com `timestamp`, `level`, `service`, `message` e metadados do evento
 - Timeouts e backoff sao configuraveis por ambiente:
   - `EEG_CONNECT_TIMEOUT_SECONDS`
   - `EEG_READ_TIMEOUT_SECONDS`

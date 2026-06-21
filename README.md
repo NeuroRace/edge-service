@@ -44,8 +44,8 @@ Perfis disponiveis em `docker-compose.yml`:
 Node:
 
 ```powershell
-node --check data_broker\index.js
-node --test data_broker\tests\*.test.js
+cd data_broker
+npm run validate
 ```
 
 Python:
@@ -53,6 +53,17 @@ Python:
 ```powershell
 python -m unittest discover -s tests -p "test_*.py"
 ```
+
+Scripts de validacao do repositorio:
+
+```powershell
+.\scripts\validate-broker.ps1
+.\scripts\validate-acquisition.ps1
+.\scripts\validate-all.ps1
+```
+
+CI:
+- `.github/workflows/ci.yml` valida broker, acquisition e sintaxe do Compose em `push` e `pull_request`
 
 ## Observacoes
 
