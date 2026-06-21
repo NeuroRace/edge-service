@@ -1,6 +1,10 @@
 # Node
 /data_broker/node_modules/
 
+# Secrets locais do broker (nao commitar) - use data_broker/.env.example como base
+/data_broker/.env
+/data_broker/.env.local
+
 # Data files
 data_pipeline/data/
 

@@ -1,10 +1,23 @@
 services:
+  redis:
+    image: redis:7-alpine
+    # Persistencia duravel (AOF): a fila de resultados e os pacotes da corrida
+    # sobrevivem a restart/recreate do container.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+
   broker:
     build: ./data_broker
     environment:
       BROKER_PORT: 3000
-    ports: 
+      REDIS_URL: redis://redis:6379
+    ports:
       - "3000:3000"
+    depends_on:
+      - redis
 
   simulator-a:
     build: ./eeg_acquisition
@@ -67,3 +80,6 @@ services:
       BROKER_URL: "http://broker:3000"
     depends_on:
       - broker
+
+volumes:
+  redis-data:

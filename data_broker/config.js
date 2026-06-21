@@ -14,6 +14,7 @@ function loadBrokerConfig(env = process.env) {
   return {
     port: Number(env.BROKER_PORT || 3000),
     allowedOrigins,
+    redisUrl: env.REDIS_URL || 'redis://redis:6379',
   };
 }
 
