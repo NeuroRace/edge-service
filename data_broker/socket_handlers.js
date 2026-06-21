@@ -20,7 +20,10 @@ function createSocketServer(server, allowedOrigins) {
   });
 }
 
-function createForwardEventHandler({ log, socket, event, runtimeState }) {
+// `session` e opcional: quando presente (persistencia habilitada), os eventos de
+// corrida sao espelhados para a camada de persistencia APOS o broadcast, em
+// fire-and-forget (uma falha de persistencia nunca bloqueia o broadcast em tempo real).
+function createForwardEventHandler({ log, socket, event, runtimeState, session }) {
   return (payload) => {
     const validationError = validateEventPayload(event, payload);
 
@@ -43,10 +46,26 @@ function createForwardEventHandler({ log, socket, event, runtimeState }) {
       enforced: ENFORCED_EVENTS.has(event),
     });
     socket.broadcast.emit(event, payload);
+
+    if (session) {
+      if (event === 'eSense') {
+        session.onEsense(payload).catch((err) =>
+          log('error', 'session_esense_error', { error: err?.message ?? String(err) }),
+        );
+      } else if (event === 'raceStarted') {
+        session.onRaceStarted(payload).catch((err) =>
+          log('error', 'session_race_started_error', { error: err?.message ?? String(err) }),
+        );
+      } else if (event === 'hasFinished') {
+        session.onHasFinished(payload).catch((err) =>
+          log('error', 'session_has_finished_error', { error: err?.message ?? String(err) }),
+        );
+      }
+    }
   };
 }
 
-function registerSocketHandlers(io, log, runtimeState) {
+function registerSocketHandlers(io, log, runtimeState, session) {
   io.on('connection', (socket) => {
     runtimeState.markClientConnected();
     log('info', 'client_connected', { socketId: socket.id });
@@ -57,7 +76,7 @@ function registerSocketHandlers(io, log, runtimeState) {
     });
 
     for (const event of BROKER_EVENTS) {
-      socket.on(event, createForwardEventHandler({ log, socket, event, runtimeState }));
+      socket.on(event, createForwardEventHandler({ log, socket, event, runtimeState, session }));
     }
   });
 }
