@@ -11,6 +11,20 @@
 // (dado persistido aguardando o dispatcher do Stage 3).
 const { randomUUID } = require('node:crypto');
 
+// ioredis `multi().exec()` resolve com um array de tuplas [err, result] e NAO
+// rejeita quando um comando individual falha — so rejeita em abort de transacao.
+// Sem isto, uma falha parcial (ex.: rpush ok, del falha) passaria silenciosa.
+// execMulti varre as tuplas e lanca o primeiro erro por-comando.
+async function execMulti(multi) {
+  const results = await multi.exec();
+  if (Array.isArray(results)) {
+    for (const entry of results) {
+      if (Array.isArray(entry) && entry[0]) throw entry[0];
+    }
+  }
+  return results;
+}
+
 function createSessionManager(redis, config, log) {
   // Identificacao por UUID Supabase ainda nao implementada (Stage 3 / NEU-37).
   // Ate la, todo e-mail e registrado sem validacao remota (`validated: false`).
@@ -22,17 +36,18 @@ function createSessionManager(redis, config, log) {
     const player1 = await validateEmail(player1Email);
     const player2 = await validateEmail(player2Email);
 
-    await redis
-      .multi()
-      .hset(
-        'pending:players',
-        'player1Email', player1Email,
-        'player1Uuid', player1.uuid || '',
-        'player2Email', player2Email,
-        'player2Uuid', player2.uuid || '',
-      )
-      .expire('pending:players', 3600)
-      .exec();
+    await execMulti(
+      redis
+        .multi()
+        .hset(
+          'pending:players',
+          'player1Email', player1Email,
+          'player1Uuid', player1.uuid || '',
+          'player2Email', player2Email,
+          'player2Uuid', player2.uuid || '',
+        )
+        .expire('pending:players', 3600),
+    );
 
     log('info', 'session_transition', { from: 'none', to: 'setup' });
     return { player1, player2 };
@@ -73,7 +88,7 @@ function createSessionManager(redis, config, log) {
         'player2IsBot', player2Email === '' ? 'true' : 'false',
       )
       .del('pending:players');
-    await multi.exec();
+    await execMulti(multi);
 
     log('info', 'race_started', {
       sessionId: id,
@@ -101,6 +116,13 @@ function createSessionManager(redis, config, log) {
 
   async function onHasFinished(payload) {
     const { playerId } = payload;
+    // hasFinished nao passa por validateEventPayload (nao e enforced); valida aqui
+    // para nao persistir registro-lixo (player undefined) na fila duravel.
+    if (playerId !== 1 && playerId !== 2) {
+      log('warn', 'has_finished_invalid_player', { playerId });
+      return;
+    }
+
     const session = await redis.hgetall('session:current');
     if (!session || !session.id) {
       log('warn', 'has_finished_no_active_session', { playerId });
@@ -159,11 +181,10 @@ function createSessionManager(redis, config, log) {
       };
 
       // Persiste o resultado e remove a lista de pacotes ja consolidada (anti-leak).
-      await redis
-        .multi()
-        .rpush('dispatch:queue', JSON.stringify(record))
-        .del(packetsKey)
-        .exec();
+      // execMulti garante que uma falha por-comando nao passe como sucesso.
+      await execMulti(
+        redis.multi().rpush('dispatch:queue', JSON.stringify(record)).del(packetsKey),
+      );
 
       log('info', 'race_result_persisted', {
         jobId: record.jobId,
@@ -173,8 +194,15 @@ function createSessionManager(redis, config, log) {
       });
     } catch (err) {
       // Falha ao consolidar: libera o claim para permitir reprocessamento futuro
-      // (evita perder a corrida por uma falha transitoria de Redis).
-      await redis.hdel('session:current', dispatchedKey).catch(() => {});
+      // (evita perder a corrida por uma falha transitoria de Redis). Se ate o
+      // rollback falhar, loga com contexto em vez de engolir silenciosamente.
+      await redis.hdel('session:current', dispatchedKey).catch((rollbackErr) =>
+        log('error', 'has_finished_rollback_failed', {
+          sessionId: session.id,
+          playerId,
+          error: rollbackErr?.message ?? String(rollbackErr),
+        }),
+      );
       throw err;
     }
   }
@@ -193,4 +221,4 @@ function createSessionManager(redis, config, log) {
   return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession };
 }
 
-module.exports = { createSessionManager };
+module.exports = { createSessionManager, execMulti };

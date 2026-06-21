@@ -47,10 +47,14 @@ function createForwardEventHandler({ log, socket, event, runtimeState, session }
     });
     socket.broadcast.emit(event, payload);
 
+    // Nota (limitacao conhecida): os hooks sao disparados sem await e sem
+    // serializacao entre si. Sob concorrencia extrema, um onEsense em voo pode
+    // perder a janela do onHasFinished. Aceitavel no Stage 1; a serializacao por
+    // sessao fica para quando o dispatcher (Stage 3) consumir a fila.
     if (session) {
       if (event === 'eSense') {
         session.onEsense(payload).catch((err) =>
-          log('error', 'session_esense_error', { error: err?.message ?? String(err) }),
+          log('error', 'session_esense_error', { player: payload?.player, error: err?.message ?? String(err) }),
         );
       } else if (event === 'raceStarted') {
         session.onRaceStarted(payload).catch((err) =>
@@ -58,7 +62,7 @@ function createForwardEventHandler({ log, socket, event, runtimeState, session }
         );
       } else if (event === 'hasFinished') {
         session.onHasFinished(payload).catch((err) =>
-          log('error', 'session_has_finished_error', { error: err?.message ?? String(err) }),
+          log('error', 'session_has_finished_error', { playerId: payload?.playerId, error: err?.message ?? String(err) }),
         );
       }
     }

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { FakeRedis } = require('./fake_redis');
-const { createSessionManager } = require('../session_manager');
+const { createSessionManager, execMulti } = require('../session_manager');
 
 const noopLog = () => {};
 
@@ -161,6 +161,31 @@ test('onHasFinished libera o claim em falha para permitir reprocessamento', asyn
   // flag liberada -> retry funciona
   await session.onHasFinished({ playerId: 1 });
   assert.equal((await redis.lrange('dispatch:queue', 0, -1)).length, 1);
+});
+
+test('onHasFinished com playerId invalido nao persiste nem grava flag', async () => {
+  const { redis, session } = makeSession();
+  await session.registerPlayers('human@x.com', '');
+  await session.onRaceStarted();
+
+  await session.onHasFinished({}); // sem playerId
+  await session.onHasFinished({ playerId: 3 }); // fora de {1,2}
+
+  assert.equal((await redis.lrange('dispatch:queue', 0, -1)).length, 0);
+  const s = await redis.hgetall('session:current');
+  assert.ok(!('playerundefinedDispatched' in s), 'nao grava flag para player undefined');
+  assert.ok(!('player3Dispatched' in s), 'nao grava flag para player fora do range');
+});
+
+test('execMulti lanca quando uma op do multi falha (erro por-comando)', async () => {
+  const fakeMulti = { exec: async () => [[null, 1], [new Error('WRONGTYPE'), null]] };
+  await assert.rejects(() => execMulti(fakeMulti), /WRONGTYPE/);
+});
+
+test('execMulti retorna normalmente quando todas as ops sao ok', async () => {
+  const fakeMulti = { exec: async () => [[null, 1], [null, 2]] };
+  const results = await execMulti(fakeMulti);
+  assert.equal(results.length, 2);
 });
 
 test('getCurrentSession reporta none e depois active', async () => {
