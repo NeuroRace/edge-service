@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "check": "node --check index.js",
-    "test": "node validate.js",
+    "test": "node --test",
     "validate": "npm run check && npm run test"
   },
   "keywords": [],

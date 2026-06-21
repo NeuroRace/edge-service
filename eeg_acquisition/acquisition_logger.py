@@ -26,5 +26,8 @@ class StructuredLogger:
     def warning(self, message: str, **metadata):
         self._log("warning", message, **metadata)
 
+    def error(self, message: str, **metadata):
+        self._log("error", message, **metadata)
+
     def critical(self, message: str, **metadata):
         self._log("critical", message, **metadata)

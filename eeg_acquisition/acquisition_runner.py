@@ -1,6 +1,7 @@
 import socket
 import socketio
 import time
+import traceback
 
 from acquisition_clients import close_connections, create_broker_client, create_eeg_client
 from acquisition_config import AcquisitionConfig
@@ -79,6 +80,12 @@ def run_acquisition_service(config: AcquisitionConfig, log):
 
     except KeyboardInterrupt:
         log.info("acquisition_shutdown_requested")
+    except RecoverableAcquisitionError as exc:
+        log.critical(
+            "acquisition_retries_exhausted",
+            error=str(exc),
+            maxReconnectAttempts=config.max_reconnect_attempts,
+        )
     except socket.error as exc:
         log.critical(
             "eeg_connection_error",
@@ -93,6 +100,10 @@ def run_acquisition_service(config: AcquisitionConfig, log):
             error=str(exc),
         )
     except Exception as exc:
-        log.critical("unexpected_acquisition_error", error=str(exc))
+        log.critical(
+            "unexpected_acquisition_error",
+            error=str(exc),
+            traceback=traceback.format_exc(),
+        )
     finally:
         log.info("acquisition_stopped")
