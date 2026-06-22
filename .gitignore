@@ -23,3 +23,6 @@ __pycache__/
 gesture_detector/env
 
 env/.env
+
+# Secrets do compose na raiz (interpolacao ${API_URL}/${EDGE_INGEST_TOKEN})
+/.env
