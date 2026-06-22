@@ -38,6 +38,7 @@ async function freshClient() {
 test('integracao: 200 -> remove da fila, processing e deadletter vazias', { skip }, async () => {
   const redis = await freshClient();
   const received = [];
+  const rec = record();
   const server = await startServer((req, res, body) => {
     received.push({ token: req.headers['x-edge-ingest-token'], body: JSON.parse(body) });
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -50,7 +51,7 @@ test('integracao: 200 -> remove da fila, processing e deadletter vazias', { skip
     dispatchBlockTimeoutSec: 1, dispatchHttpTimeoutMs: 1000,
   };
   try {
-    await redis.rpush('dispatch:queue', JSON.stringify(record()));
+    await redis.rpush('dispatch:queue', JSON.stringify(rec));
     const d = createDispatcher(redis, config, () => {}, fetch, noSleep);
     assert.equal(await d.processOnce(), true);
 
@@ -61,6 +62,8 @@ test('integracao: 200 -> remove da fila, processing e deadletter vazias', { skip
     assert.equal(received[0].token, 'tok');
     assert.equal(received[0].body.schema_version, '1.0');
     assert.equal(received[0].body.player_slot, 1);
+    assert.equal(received[0].body.idempotency_key, rec.jobId);
+    assert.equal(received[0].body.race_id, rec.sessionId);
   } finally {
     server.close();
     await redis.del(...KEYS);
@@ -70,7 +73,9 @@ test('integracao: 200 -> remove da fila, processing e deadletter vazias', { skip
 
 test('integracao: 422 -> dead-letter, processing vazia', { skip }, async () => {
   const redis = await freshClient();
+  const received = [];
   const server = await startServer((req, res) => {
+    received.push({ token: req.headers['x-edge-ingest-token'] });
     res.writeHead(422, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'race_id_must_be_uuid' }));
   });
@@ -86,6 +91,7 @@ test('integracao: 422 -> dead-letter, processing vazia', { skip }, async () => {
     await d.processOnce();
     assert.equal(await redis.llen('dispatch:deadletter'), 1);
     assert.equal(await redis.llen('dispatch:processing'), 0);
+    assert.equal(received[0].token, 'tok');
   } finally {
     server.close();
     await redis.del(...KEYS);

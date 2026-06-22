@@ -1,8 +1,8 @@
 // data_broker/api_dispatcher.js
 // Consome dispatch:queue e entrega cada resultado de corrida a Edge Function
 // ingest-race (Supabase). Fila confiavel via BLMOVE -> dispatch:processing com
-// recuperacao no boot; dead-letter para falhas permanentes/esgotadas; retry
-// in-line com backoff e timeout HTTP. Ver spec §5.
+// recuperacao no boot; dead-letter para falhas permanentes/esgotadas/malformadas;
+// retry in-line com backoff e timeout HTTP. Ver spec §5.
 const { toCanonicalBody } = require('./dispatch_mapping');
 
 const QUEUE = 'dispatch:queue';
@@ -47,6 +47,12 @@ function isValidRecord(r) {
     && Array.isArray(r.payload.packets);
 }
 
+// Normaliza a forma de cada entrada no dead-letter para que todos os sites
+// produzam o mesmo conjunto de chaves (facilita inspecao e alertas).
+function deadLetterEntry({ raw = null, record = null, reason, httpStatus = null, errorCode = null, attempts = 1, error = null }) {
+  return { reason, jobId: record?.jobId ?? null, httpStatus, errorCode, attempts, error, raw, failedAt: Date.now() };
+}
+
 function createDispatcher(
   redis,
   config,
@@ -57,12 +63,13 @@ function createDispatcher(
   let running = false;
 
   async function recoverProcessing() {
-    const orphans = await redis.lrange(PROCESSING, 0, -1);
-    for (const raw of orphans) {
-      await redis.rpush(QUEUE, raw);
-      await redis.lrem(PROCESSING, -1, raw);
+    let count = 0;
+    // LMOVE e atomico por elemento: sem janela de duplicacao entre processing e queue.
+    // LEFT->RIGHT preserva a ordem FIFO. Loop ate processing esvaziar.
+    while ((await redis.lmove(PROCESSING, QUEUE, 'LEFT', 'RIGHT')) !== null) {
+      count += 1;
     }
-    if (orphans.length) log('warn', 'dispatch_recovered_orphans', { count: orphans.length });
+    if (count) log('warn', 'dispatch_recovered_orphans', { count });
   }
 
   async function deadLetter(raw, entry) {
@@ -77,12 +84,20 @@ function createDispatcher(
     let record = null;
     try { record = JSON.parse(raw); } catch { record = null; }
     if (!isValidRecord(record)) {
-      await deadLetter(raw, { raw, reason: 'malformed_record', failedAt: Date.now() });
+      await deadLetter(raw, deadLetterEntry({ raw, reason: 'malformed_record' }));
       log('error', 'dispatch_dead_letter', { reason: 'malformed_record' });
       return true;
     }
 
-    const body = toCanonicalBody(record);
+    let body;
+    try {
+      body = toCanonicalBody(record);
+    } catch (err) {
+      await deadLetter(raw, deadLetterEntry({ record, reason: 'mapping_failed', error: err?.message ?? String(err) }));
+      log('error', 'dispatch_dead_letter', { jobId: record.jobId, reason: 'mapping_failed' });
+      return true;
+    }
+
     let attempt = 0;
     while (true) {
       attempt += 1;
@@ -107,10 +122,10 @@ function createDispatcher(
         }
         if (cls === 'permanent') {
           const errBody = await safeJson(res);
-          await deadLetter(raw, {
+          await deadLetter(raw, deadLetterEntry({
             record, reason: 'permanent', httpStatus: res.status,
-            errorCode: errBody?.error ?? null, attempts: attempt, failedAt: Date.now(),
-          });
+            errorCode: errBody?.error ?? null, attempts: attempt,
+          }));
           log('error', res.status === 401 ? 'dispatch_auth_failed' : 'dispatch_dead_letter', {
             jobId: record.jobId, httpStatus: res.status, errorCode: errBody?.error ?? null,
           });
@@ -120,10 +135,10 @@ function createDispatcher(
 
       // transitorio (429/5xx/rede/timeout)
       if (attempt >= config.dispatchMaxAttempts) {
-        await deadLetter(raw, {
+        await deadLetter(raw, deadLetterEntry({
           record, reason: 'exhausted', httpStatus: threw ? null : res.status,
-          attempts: attempt, failedAt: Date.now(),
-        });
+          attempts: attempt,
+        }));
         log('error', 'dispatch_dead_letter', { jobId: record.jobId, reason: 'exhausted', attempts: attempt });
         return true;
       }
@@ -141,6 +156,7 @@ function createDispatcher(
         await processOnce();
       } catch (err) {
         log('error', 'dispatcher_loop_error', { message: err?.message ?? String(err) });
+        await sleepFn(config.dispatchBackoffMaxMs);
       }
     }
   }

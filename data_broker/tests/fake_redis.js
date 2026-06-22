@@ -1,6 +1,7 @@
 // tests/fake_redis.js
-// Mock em memoria do subconjunto de Redis usado pelo session_manager.
-// Fiel o suficiente para HSETNX (claim atomico), MULTI/EXEC e semantica de del.
+// Double em memoria do subconjunto de Redis usado pelo session_manager E pelo
+// dispatcher. Cobre hash ops (HSETNX/HSET/HDEL), list ops da fila confiavel
+// (LMOVE/BLMOVE/LREM/LPUSH/RPUSH) e MULTI/EXEC para o claim atomico.
 // NAO e um arquivo de teste (sem `.test.`), entao node --test nao o executa.
 const { EventEmitter } = require('node:events');
 

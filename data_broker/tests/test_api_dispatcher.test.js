@@ -177,3 +177,69 @@ test('recoverProcessing move orfaos de processing de volta para a fila', async (
   assert.equal(await redis.llen(PROCESSING), 0);
   assert.equal(await redis.llen(QUEUE), 1);
 });
+
+test('pacote malformado (null) -> dead-letter mapping_failed, sem POST', async () => {
+  const redis = new FakeRedis();
+  const rec = record();
+  rec.payload.packets = [null]; // passa isValidRecord (array), mas quebra o mapper
+  await seedQueue(redis, rec);
+  const fetchFn = fetchSeq([{ status: 200, body: {} }]);
+  const d = createDispatcher(redis, CONFIG, () => {}, fetchFn, noSleep);
+  await d.processOnce();
+  assert.equal(fetchFn.calls.length, 0);
+  assert.equal(await redis.llen(PROCESSING), 0);
+  const dl = JSON.parse((await redis.lrange(DEADLETTER, 0, -1))[0]);
+  assert.equal(dl.reason, 'mapping_failed');
+});
+
+test('429 transitorio: retenta e nao vai para dead-letter', async () => {
+  const redis = new FakeRedis();
+  await seedQueue(redis, record());
+  const fetchFn = fetchSeq([{ status: 429 }, { status: 200, body: { status: 'created' } }]);
+  const d = createDispatcher(redis, CONFIG, () => {}, fetchFn, noSleep);
+  await d.processOnce();
+  assert.equal(fetchFn.calls.length, 2);
+  assert.equal(await redis.llen(DEADLETTER), 0);
+  assert.equal(await redis.llen(PROCESSING), 0);
+});
+
+test('playerId fora de {1,2} -> dead-letter malformed_record, sem POST', async () => {
+  const redis = new FakeRedis();
+  await seedQueue(redis, record({ playerId: 3 }));
+  const fetchFn = fetchSeq([]);
+  const d = createDispatcher(redis, CONFIG, () => {}, fetchFn, noSleep);
+  await d.processOnce();
+  assert.equal(fetchFn.calls.length, 0);
+  const dl = JSON.parse((await redis.lrange(DEADLETTER, 0, -1))[0]);
+  assert.equal(dl.reason, 'malformed_record');
+});
+
+test('timeout HTTP (abort) tratado como transitorio', async () => {
+  const redis = new FakeRedis();
+  await seedQueue(redis, record());
+  let aborted = false;
+  const fetchFn = (_url, opts) => new Promise((_resolve, reject) => {
+    opts.signal.addEventListener('abort', () => {
+      aborted = true;
+      const err = new Error('aborted'); err.name = 'AbortError'; reject(err);
+    });
+  });
+  const cfg = { ...CONFIG, dispatchHttpTimeoutMs: 5, dispatchMaxAttempts: 1 };
+  const d = createDispatcher(redis, cfg, () => {}, fetchFn); // sleepFn default (irrelevante, maxAttempts=1)
+  await d.processOnce();
+  assert.ok(aborted);
+  assert.equal(await redis.llen(PROCESSING), 0);
+  const dl = JSON.parse((await redis.lrange(DEADLETTER, 0, -1))[0]);
+  assert.equal(dl.reason, 'exhausted');
+});
+
+test('recoverProcessing restaura multiplos orfaos em ordem FIFO', async () => {
+  const redis = new FakeRedis();
+  await redis.rpush(PROCESSING, JSON.stringify(record({ jobId: 'a' })));
+  await redis.rpush(PROCESSING, JSON.stringify(record({ jobId: 'b' })));
+  const d = createDispatcher(redis, CONFIG, () => {}, fetchSeq([]), noSleep);
+  await d.recoverProcessing();
+  assert.equal(await redis.llen(PROCESSING), 0);
+  const jobs = (await redis.lrange(QUEUE, 0, -1)).map((r) => JSON.parse(r).jobId);
+  assert.deepEqual(jobs, ['a', 'b']);
+});
