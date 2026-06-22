@@ -79,6 +79,7 @@ class FakeRedis extends EventEmitter {
     const src = this.lists.get(source) || [];
     if (src.length === 0) return null;
     const val = srcDir === 'LEFT' ? src.shift() : src.pop();
+    if (src.length === 0) this.lists.delete(source);
     if (!this.lists.has(dest)) this.lists.set(dest, []);
     const d = this.lists.get(dest);
     if (destDir === 'LEFT') d.unshift(val);
@@ -108,6 +109,7 @@ class FakeRedis extends EventEmitter {
         else i += 1;
       }
     }
+    if (list.length === 0) this.lists.delete(key);
     return removed;
   }
 
