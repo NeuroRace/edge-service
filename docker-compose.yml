@@ -14,6 +14,8 @@ services:
     environment:
       BROKER_PORT: 3000
       REDIS_URL: redis://redis:6379
+      API_URL: ${API_URL:-}
+      EDGE_INGEST_TOKEN: ${EDGE_INGEST_TOKEN:-}
     ports:
       - "3000:3000"
     depends_on:

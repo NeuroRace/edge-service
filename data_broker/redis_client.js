@@ -16,4 +16,18 @@ function createRedisClient(config, log = () => {}, RedisClient = Redis) {
   return client;
 }
 
-module.exports = { createRedisClient };
+// Conexao DEDICADA para comandos bloqueantes (BLMOVE). maxRetriesPerRequest:null
+// e a recomendacao do ioredis para comandos bloqueantes; e uma 2a conexao para
+// nao bloquear a conexao principal durante o timeout do BLMOVE (spec §4.1).
+function createBlockingRedisClient(config, log = () => {}, RedisClient = Redis) {
+  const client = new RedisClient(config.redisUrl, {
+    maxRetriesPerRequest: null,
+    connectTimeout: 10000,
+  });
+  client.on('connect', () => log('info', 'redis_blocking_connected', {}));
+  client.on('error', (err) => log('error', 'redis_blocking_error', { message: err.message }));
+  client.on('close', () => log('warn', 'redis_blocking_closed', {}));
+  return client;
+}
+
+module.exports = { createRedisClient, createBlockingRedisClient };

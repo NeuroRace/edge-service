@@ -2,12 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 
-const { createRedisClient } = require('../redis_client');
+const { createRedisClient, createBlockingRedisClient } = require('../redis_client');
 
 class FakeRedisClient extends EventEmitter {
-  constructor(url) {
+  constructor(url, opts) {
     super();
     this.url = url;
+    this.opts = opts;
   }
 }
 
@@ -31,4 +32,12 @@ test('createRedisClient conecta na url do config e loga eventos de ciclo de vida
     ],
   );
   assert.equal(logs[1].meta.message, 'boom');
+});
+
+test('createBlockingRedisClient usa maxRetriesPerRequest null', () => {
+  const client = createBlockingRedisClient(
+    { redisUrl: 'redis://example:6379' }, () => {}, FakeRedisClient,
+  );
+  assert.equal(client.url, 'redis://example:6379');
+  assert.equal(client.opts.maxRetriesPerRequest, null);
 });
