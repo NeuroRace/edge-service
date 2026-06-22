@@ -68,6 +68,49 @@ class FakeRedis extends EventEmitter {
     return (this.lists.get(key) || []).length;
   }
 
+  async lpush(key, ...values) {
+    if (!this.lists.has(key)) this.lists.set(key, []);
+    const list = this.lists.get(key);
+    for (const v of values) list.unshift(String(v));
+    return list.length;
+  }
+
+  async lmove(source, dest, srcDir, destDir) {
+    const src = this.lists.get(source) || [];
+    if (src.length === 0) return null;
+    const val = srcDir === 'LEFT' ? src.shift() : src.pop();
+    if (!this.lists.has(dest)) this.lists.set(dest, []);
+    const d = this.lists.get(dest);
+    if (destDir === 'LEFT') d.unshift(val);
+    else d.push(val);
+    return val;
+  }
+
+  // Fake nao bloqueia: retorna imediatamente (null se vazio). Os testes
+  // pre-populam a fila, entao o comportamento bloqueante real e irrelevante aqui.
+  async blmove(source, dest, srcDir, destDir, _timeoutSec) {
+    return this.lmove(source, dest, srcDir, destDir);
+  }
+
+  async lrem(key, count, value) {
+    const list = this.lists.get(key);
+    if (!list) return 0;
+    const v = String(value);
+    let removed = 0;
+    if (count < 0) {
+      for (let i = list.length - 1; i >= 0 && removed < -count; i -= 1) {
+        if (list[i] === v) { list.splice(i, 1); removed += 1; }
+      }
+    } else {
+      const limit = count === 0 ? Infinity : count;
+      for (let i = 0; i < list.length && removed < limit;) {
+        if (list[i] === v) { list.splice(i, 1); removed += 1; }
+        else i += 1;
+      }
+    }
+    return removed;
+  }
+
   async del(...keys) {
     let n = 0;
     for (const key of keys) {
