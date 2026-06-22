@@ -1,3 +1,7 @@
+# macOS / notas locais (nao commitar)
+.DS_Store
+/inbox/
+
 # Node
 /data_broker/node_modules/
 
