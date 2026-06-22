@@ -93,11 +93,13 @@ Producer faz `rpush` (cauda). Consumer:
 
 Classificação **por classe** (defensiva): a função real só emite `401/405/422` no 4xx **[ev §2]**, mas tratamos qualquer 4xx (menos `429`) como permanente caso a função/um proxy evolua. `429` é convencionalmente "retentar mais tarde" → transitório (a função **não** emite `429` hoje, sem rate-limit — handoff §7, mas classificamos certo por robustez). **[dec]**
 
+**Timeout HTTP obrigatório [dec]:** `fetch` não tem timeout por default — um POST travado bloquearia o consumidor único **indefinidamente**. O POST usa `AbortController` com `dispatchHttpTimeoutMs` (§6); abort/timeout conta como falha **transitória** (entra no retry). Sem isto, "timeout → transitório" na tabela seria inalcançável. **[ev — `fetch` global do Node não tem timeout default]**
+
 `401` é permanente-para-o-job mas é **erro de config** (token errado), não de payload. Mitigações: (a) no boot, se `apiUrl` setado e `edgeIngestToken` vazio → log `error` `dispatch_token_missing`; (b) cada `401` loga `error` `dispatch_auth_failed`. Reprocessar a dead-letter após corrigir o token é passo manual de ops (fora do MVP, §9). **[dec — honesto: um token errado dreno todas as corridas para dead-letter; o log alto + boot-check é a defesa pragmática para 1 kiosk]**
 
 ### 5.3 Retry [dec]
 
-Backoff exponencial limitado, **in-line** no mesmo job, até `maxAttempts`. Esgotou → dead-letter (`reason: "exhausted"`). **Trade-off honesto:** o backoff in-line bloqueia o consumidor único durante a espera. É **aceitável neste volume** (1 kiosk; ~5 pacotes/corrida; 1 POST por jogador humano; corridas não concorrem — a próxima não começa enquanto a anterior despacha). **Quando revisitar:** se houver throughput real/backlog, trocar por delay-queue (sorted set por `nextRetryAt`). Não fazer agora = evitar over-engineering. **[ev — volume: handoff §7 + premissa do dono "5s, 1 pkt/s"]**
+Backoff exponencial limitado, **in-line** no mesmo job, até `maxAttempts`. Esgotou → dead-letter (`reason: "exhausted"`). **Trade-off honesto:** o backoff in-line bloqueia o consumidor único durante a espera. É **aceitável neste volume** (1 kiosk; **1-2 jobs por corrida** — 1 POST por jogador humano; corridas não concorrem — a próxima não começa enquanto a anterior despacha). O argumento é sobre **número de jobs**, não sobre pacotes/job: cada job carrega ~300-360 pontos (~80-130 KB), mas isso é 1 POST de latência desprezível, não um backlog. **Quando revisitar:** se houver throughput real/backlog, trocar por delay-queue (sorted set por `nextRetryAt`). Não fazer agora = evitar over-engineering. **[ev — volume: corrida de 5-6 min @ 1 Hz ⇒ ~300-360 pacotes/jogador (premissa do dono); handoff §7]**
 
 ### 5.4 Dispatcher desabilitado sem `apiUrl` (não-regressão) [dec]
 
@@ -121,6 +123,7 @@ Se um item da fila não faz `JSON.parse` ou não tem `jobId`/`playerId`/`session
 | `dispatchBackoffMaxMs` | `DISPATCH_BACKOFF_MAX_MS` | `10000` | |
 | `dispatchMaxAttempts` | `DISPATCH_MAX_ATTEMPTS` | `8` | esgotou ⇒ dead-letter |
 | `dispatchBlockTimeoutSec` | `DISPATCH_BLOCK_TIMEOUT_SEC` | `5` | timeout do `BLMOVE` |
+| `dispatchHttpTimeoutMs` | `DISPATCH_HTTP_TIMEOUT_MS` | `15000` | timeout do POST via `AbortController` (§5.2) |
 
 **Não** adicionar `supabaseUrl`/`supabaseAnonKey` — a auth é só shared-secret; a anon key **não** é usada (correção do PR#4). **[ev — `index.ts:21-25`; PR#4 mandava `apikey`+`Bearer anonKey` → 401 garantido]**
 
@@ -161,7 +164,7 @@ FakeRedis ganha `blmove`/`lmove` e `lrem` (hoje tem `rpush/lrange/llen/del/...`)
 - **Delay-queue / retry agendado** — in-line basta neste volume (§5.3).
 - **Reprocessamento automático da dead-letter** — manual/ops no MVP.
 - **`player_uuid` real** — depende de NEU-17; fica `null`.
-- **Cap de tamanho de payload** — responsabilidade da cloud (handoff §7); a 5s@1Hz é não-issue; não duplicar no edge.
+- **Cap de tamanho de payload** — responsabilidade da cloud (handoff §7). Corrida de 5-6 min @ 1 Hz ⇒ ~300-360 pontos ⇒ **~80-130 KB/POST**, muito abaixo da faixa de MB de um body de Edge Function **[hip — limite exato não verificado nesta sessão]**. Não-issue com margem grande; não duplicar cap no edge. Se a cloud um dia retornar oversize, vira `4xx` permanente → dead-letter (já coberto).
 - **Batch upload** — apesar do título da NEU-7 ("Batch Upload"), o contrato é **1 POST por jogador**. Não batchar. **[ev — contrato §1; Linear defasado]**
 
 ## 10. Riscos abertos (brutal)
