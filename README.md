@@ -27,6 +27,22 @@ Perfis disponiveis em `docker-compose.yml`:
 
 O broker depende do servico `redis` (persistencia da corrida) e o Compose o sobe automaticamente via `depends_on`. O envio para a nuvem (dispatcher) e opt-in: so roda quando `API_URL` e `EDGE_INGEST_TOKEN` estao definidos; sem eles o resultado da corrida e persistido em `dispatch:queue` mas nao enviado. Use `data_broker/.env.example` como base para a config local (`data_broker/.env`, gitignored).
 
+## Modos de execucao
+
+O broker sempre persiste o resultado da corrida no Redis (dependencia do Compose). O envio para a nuvem e opt-in:
+
+- **Sem envio a nuvem (padrao / desenvolvimento):** nao defina `API_URL`. O resultado e persistido em `dispatch:queue` e nada e enviado. Ex.: `docker compose --profile sim-local up`.
+- **Com envio a nuvem:** defina `API_URL` e `EDGE_INGEST_TOKEN` em `data_broker/.env` e suba o stack. O dispatcher consome a fila e envia cada corrida para a funcao `ingest-race`.
+
+O que o Supabase precisa fornecer para o envio:
+
+- `API_URL`: URL da Edge Function de ingest (ex.: `https://<projeto>.supabase.co/functions/v1/ingest-race`).
+- `EDGE_INGEST_TOKEN`: shared-secret que a funcao valida no header `x-edge-ingest-token`.
+
+Nao sao usadas a anon key nem `Authorization` (a funcao roda com `verify_jwt=false`). O contrato completo esta em `docs/cloud-sync-contract.md`.
+
+Nota sobre os simuladores: no perfil `sim-local`, o `acquisition-a` (jogador 1) aponta para `host.docker.internal` por padrao (leitor EEG real no host). Para uma corrida 100% simulada, aponte-o para o `simulator-a` (`EEG_HOST=simulator-a`). O `acquisition-b` usa `SOURCE=bot` e, por ser bot, nao e despachado para a nuvem.
+
 ## Variaveis operacionais do acquisition
 
 - `PLAYER_ID`
