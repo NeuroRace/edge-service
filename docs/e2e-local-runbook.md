@@ -61,12 +61,15 @@ e `race_result_persisted` para os dois jogadores, com o número de `packets` = `
 
 ---
 
-## Parte 2 — Esteira completa até o Supabase local  ⚠️ NÃO verificado neste runbook
+## Parte 2 — Esteira completa até o Supabase local  ✅ verificado (2026-07-02)
 
-> **Honestidade:** os passos abaixo estão descritos por evidência do código/config, mas
-> **não foram executados de ponta a ponta** ainda. As partes que costumam morder: a rede
-> do Docker até a função local (`host.docker.internal` no macOS) e o casamento do token.
-> Confirme rodando; corrija este runbook com o que aprender.
+> **Verificado ponta a ponta em 2026-07-02** (Supabase local já rodando + broker `node`
+> no host + dispatcher ligado): harness → broker → `dispatch:queue` → dispatcher →
+> `ingest-race` local → Postgres. Resultado: `dispatch:queue`/`processing`/`deadletter` = 0,
+> **2 linhas em `race_players`** (slots 1 e 2, `source=real`) e **10 em `telemetry_points`**
+> (2 jogadores × 5 pontos). Rodando o broker com `node` no host, use `API_URL` com
+> `127.0.0.1:54321` (o `host.docker.internal` só é necessário se o broker rodar DENTRO de
+> um container).
 
 ```bash
 # A. Nuvem LOCAL (no repo ../cloud-backend)
@@ -99,7 +102,20 @@ psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
 ```
 
 Checagens de saúde: `dispatch:deadletter` deve estar **vazia**
-(`redis-cli LLEN dispatch:deadletter` = 0) e o log do broker deve mostrar `dispatch_ok`.
+(`redis-cli LLEN dispatch:deadletter` = 0). A prova definitiva é o estado do Postgres
+(as linhas só entram via a função `ingest-race`, chamada pelo dispatcher).
+
+```bash
+# E. Teardown reversível — pare o broker, remova o Redis e APAGUE só as linhas de teste.
+#    Ordem importa (FK): race_players primeiro (cascateia telemetry), depois races
+#    órfãs, depois players. NÃO use um único psql -c com races antes de race_players:
+#    vira uma transação implícita e o erro de FK faz rollback de tudo.
+psql "$DB" -c "delete from race_players where player_id in (select id from players where email in ('jogador1@ex.com','jogador2@ex.com'));"
+psql "$DB" -c "delete from races r where not exists (select 1 from race_players rp where rp.race_id = r.id);"
+psql "$DB" -c "delete from players where email in ('jogador1@ex.com','jogador2@ex.com');"
+# broker/redis: kill do processo node + docker rm -f do redis de teste.
+# NÃO rode `supabase stop` se você não foi quem subiu o stack (deixe como encontrou).
+```
 
 ---
 
