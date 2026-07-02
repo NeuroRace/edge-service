@@ -62,4 +62,5 @@ Baseline verde de referência (main `9036e21`, verificado 2026-07-02): **`node -
 ## Ponteiros
 - Bootstrap e modos de execução: `README.md`.
 - Specs/planos: `docs/superpowers/{specs,plans}/`. Contrato edge→cloud: `docs/cloud-sync-contract.md`. Par na nuvem: `../cloud-backend/`.
+- **Teste E2E local (NEU-70):** runbook em `docs/e2e-local-runbook.md` (esteira edge→cloud local, sem tocar produção). Harness produtor de corrida (faz o papel do game-engine + tela de ops): `data_broker/e2e/race-producer.js` — ferramenta de teste, recusa alvo não-local.
 - Follow-ups no Linear: **NEU-68** (dashboard de emails), **NEU-69** (tech-debt do dispatcher), **NEU-17** (identificação / `player_uuid`).
