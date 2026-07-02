@@ -27,3 +27,6 @@ env/.env
 
 # Secrets do compose na raiz (interpolacao ${API_URL}/${EDGE_INGEST_TOKEN})
 /.env
+
+# Evidencia local de QA/critico (nao versionar)
+qa-evidence/
