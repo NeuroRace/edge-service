@@ -47,7 +47,7 @@ Baseline verde de referência (main `9036e21`, verificado 2026-07-02): **`node -
 - **Entrega ao cloud é at-least-once + idempotente** (`idempotency_key`=jobId dedup na nuvem); o dispatcher tem fila confiável + dead-letter + retry.
 
 ## Fluxo de trabalho
-1. Branch a partir de `main` (`git checkout main && git pull`, depois `git checkout -b feat/...`). **Não** commite direto em `main` (protegida; push bloqueado).
+1. Branch a partir de `main` (`git checkout main && git pull`, depois `git checkout -b feat/...`). **Não** commite direto em `main` — use branch + PR (convenção do repo; todo o trabalho recente foi assim).
 2. TDD por task (teste falha → implementa → passa → commit). Planos grandes: `superpowers:subagent-driven-development` (implementer + review por task) + `/pr-review-toolkit:review-pr` no fim.
 3. **Worktrees:** prefira-as por padrão em trabalhos de **implementação** (isolam a mudança; permitem sessões/agentes paralelos sem colidir) — `superpowers:using-git-worktrees`. Dispensáveis para análise/investigação (sem escrita de código).
 4. CI (`.github/workflows/ci.yml`) precisa estar **verde** antes do merge: jobs `broker` (npm ci + validate, com serviço redis), `acquisition` (python unittest), `compose-config`.
