@@ -25,7 +25,9 @@ async function execMulti(multi) {
   return results;
 }
 
-function createSessionManager(redis, config, log) {
+// `hooks.onDiscarded()` (opcional) e chamado quando uma corrida consolidada e descartada
+// por ser de jogador sem e-mail registrado (NEU-73): alimenta o contador do /health.
+function createSessionManager(redis, config, log, hooks = {}) {
   // Identificacao por UUID Supabase ainda nao implementada (Stage 3 / NEU-37).
   // Ate la, todo e-mail e registrado sem validacao remota (`validated: false`).
   async function validateEmail(email) {
@@ -129,7 +131,15 @@ function createSessionManager(redis, config, log) {
       return;
     }
 
-    if (session[`player${playerId}IsBot`] === 'true') return;
+    if (session[`player${playerId}IsBot`] === 'true') {
+      // NEU-73: antes era um return mudo — a forma mais provavel de perder a corrida de
+      // uma pessoa real (largada sem registrar e-mails) sem ninguem perceber.
+      log('warn', 'has_finished_discarded_bot', {
+        playerId, sessionId: session.id, reason: 'no_email_registered',
+      });
+      if (typeof hooks.onDiscarded === 'function') hooks.onDiscarded({ playerId, sessionId: session.id });
+      return;
+    }
 
     const dispatchedKey = `player${playerId}Dispatched`;
 
@@ -218,7 +228,17 @@ function createSessionManager(redis, config, log) {
     };
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession };
+  // Ultimas corridas enviadas/rejeitadas pelo dispatcher (mais recente primeiro) — NEU-68.
+  async function getDispatchHistory() {
+    const items = await redis.lrange('dispatch:history', 0, -1);
+    const out = [];
+    for (const raw of items) {
+      try { out.push(JSON.parse(raw)); } catch { /* entrada corrompida: ignora */ }
+    }
+    return out;
+  }
+
+  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory };
 }
 
 module.exports = { createSessionManager, execMulti };

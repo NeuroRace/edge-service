@@ -4,7 +4,8 @@ const MAX_BODY_BYTES = 4096;
 
 // `getHealthSnapshot` (obrigatorio) alimenta GET /health.
 // `session` e `log` sao opcionais: quando `session` esta presente, expoe os
-// endpoints de persistencia (POST /api/players, GET /api/session/current).
+// endpoints de persistencia (POST /api/players, GET /api/session/current,
+// GET /api/dispatch/history).
 function createHttpServer(getHealthSnapshot, session, log = () => {}) {
   return http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
@@ -22,6 +23,22 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}) {
         })
         .catch((err) => {
           log('error', 'api_session_current_error', { error: err?.message ?? String(err) });
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'internal_error' }));
+        });
+      return;
+    }
+
+    // Historico curto do dispatcher (NEU-68): ultimas corridas enviadas/rejeitadas.
+    if (session && req.method === 'GET' && req.url === '/api/dispatch/history') {
+      session
+        .getDispatchHistory()
+        .then((data) => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(data));
+        })
+        .catch((err) => {
+          log('error', 'api_dispatch_history_error', { error: err?.message ?? String(err) });
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'internal_error' }));
         });

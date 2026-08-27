@@ -43,6 +43,18 @@ Nao sao usadas a anon key nem `Authorization` (a funcao roda com `verify_jwt=fal
 
 Nota sobre os simuladores: no perfil `sim-local`, o `acquisition-a` (jogador 1) aponta para `host.docker.internal` por padrao (leitor EEG real no host). Para uma corrida 100% simulada, aponte-o para o `simulator-a` (`EEG_HOST=simulator-a`). O `acquisition-b` usa `SOURCE=bot` e, por ser bot, nao e despachado para a nuvem.
 
+## Dead-letter, historico e requeue (operacao)
+
+- `dispatch:deadletter` guarda cada corrida rejeitada com o registro original em `raw` (campo obrigatorio em todos os motivos: `exhausted`, `permanent`, `mapping_failed`, `malformed_record`). **Requeue manual** = devolver o `raw` a fila:
+  ```bash
+  docker compose exec redis redis-cli LINDEX dispatch:deadletter 0            # inspeciona
+  docker compose exec redis sh -c 'redis-cli LINDEX dispatch:deadletter 0' | python3 -c 'import json,sys; print(json.load(sys.stdin)["raw"])' > /tmp/raw.json
+  docker compose exec -T redis redis-cli RPUSH dispatch:queue "$(cat /tmp/raw.json)"   # o dispatcher reenvia (idempotente na nuvem)
+  docker compose exec redis redis-cli LPOP dispatch:deadletter                # so depois de confirmar dispatch_success
+  ```
+- `GET /health` expoe `dispatcher` (ligado/desligado + motivo, alvo, ultimo poll, contadores da fila) e `discardedRaces` (corridas de jogador sem e-mail registrado — NEU-73). O `status` e sempre `ok`: o dispatcher morto nao derruba o broadcast.
+- `GET /api/dispatch/history` lista as ultimas 20 corridas enviadas/rejeitadas (e-mail mascarado).
+
 ## Variaveis operacionais do acquisition
 
 - `PLAYER_ID`
