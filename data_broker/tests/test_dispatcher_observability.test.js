@@ -83,7 +83,7 @@ test('test_DispatchHistory_success_appends_masked_entry', async () => {
   const d = make(redis, fetchSeq([{ status: 200, body: { status: 'created' } }]));
   await d.processOnce();
   const [h] = await history(redis);
-  assert.deepEqual(h, { jobId: 'j-1', playerId: 1, email: 'hu***@exemplo.com', status: 'sent', result: 'created', httpStatus: 200, reason: null, attempts: 1, at: 1_700_000_000_000 });
+  assert.deepEqual(h, { jobId: 'j-1', sessionId: 's-1', playerId: 1, email: 'hu***@exemplo.com', status: 'sent', result: 'created', httpStatus: 200, reason: null, attempts: 1, at: 1_700_000_000_000 });
 });
 
 test('test_DispatchHistory_deadletter_appends_entry_with_reason', async () => {

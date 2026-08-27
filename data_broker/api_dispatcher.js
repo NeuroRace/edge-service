@@ -118,6 +118,7 @@ function createDispatcher(
   function historyEntry(record, { status, result = null, httpStatus = null, reason = null, attempts }) {
     return {
       jobId: record?.jobId ?? null,
+      sessionId: record?.sessionId ?? null,
       playerId: record?.playerId ?? null,
       email: maskEmail(record?.payload?.email),
       status, result, httpStatus, reason, attempts, at: now(),
