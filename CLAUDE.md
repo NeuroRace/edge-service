@@ -20,7 +20,7 @@ O lado **edge** (kiosk) do NeuroRace: captura EEG/gestos em tempo real, faz broa
 - `docs/` — `event-contracts.md`, `cloud-sync-contract.md`, `superpowers/{specs,plans}/`.
 
 ## Rodar (precisa de Docker)
-Detalhes e perfis no `README.md`. Resumo: `docker compose --profile sim-local up`. O broker depende do `redis`. O dispatcher é **opt-in**: só envia à nuvem com `API_URL` + `EDGE_INGEST_TOKEN`; sem eles, o resultado é persistido em `dispatch:queue` e não enviado (nada é perdido).
+Detalhes e perfis no `README.md`. Resumo: `docker compose --profile sim-local up`; banca/NEXT sem NeuroSky (2 humanos simulados): `docker compose --profile banca up`. O broker depende do `redis`. O dispatcher é **opt-in**: só envia à nuvem com `API_URL` + `EDGE_INGEST_TOKEN` — que o Compose lê do **`.env` da raiz** (`/.env.example`) ou de variável **exportada no shell** (esta tem precedência) — nunca de `data_broker/.env`; sem eles, o broker sobe com `dispatcher_disabled` (silencioso; `/health` segue ok) e o resultado fica em `dispatch:queue` sem ser enviado (nada é perdido, mas nada chega à nuvem).
 
 ## Testar (é assim que se prova não-regressão)
 ```bash
@@ -56,7 +56,7 @@ Baseline verde de referência (main `9036e21`, verificado 2026-07-02): **`node -
 
 ## Segredos / tokens (NUNCA ecoar, NUNCA commitar)
 - **Linear:** time **NEU**. Token via `$NEURORACE_LINEAR_API_KEY` (convenção NeuroRace); se não estiver setado no ambiente desta sessão, peça ao Pedro. Linear **não é fonte da verdade** (issues podem estar defasadas).
-- **`EDGE_INGEST_TOKEN` de produção** (para E2E ao vivo contra a função `ingest-race`): vive em `../cloud-backend/.secret.prod.env` (local, `chmod 600`). Use via `data_broker/.env` (gitignored) ou env efêmera; **nunca** leia/eco em chat nem commite.
+- **`EDGE_INGEST_TOKEN` de produção** (para E2E ao vivo contra a função `ingest-race`): vive em `../cloud-backend/.secret.prod.env` (local, `chmod 600`). Com Compose, use via `/.env` da raiz (gitignored); com `node` no host, via `data_broker/.env` ou env efêmera; **nunca** leia/eco em chat nem commite.
 - `data_broker/.env`, `/.env` (raiz), `inbox/`, `.superpowers/` são gitignored — não commite.
 
 ## Ponteiros
