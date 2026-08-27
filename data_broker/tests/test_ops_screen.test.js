@@ -93,3 +93,14 @@ test('test_SessionExposesBotFlags_current_session_has_isbot_and_startedAt', asyn
   assert.equal(typeof cur.startedAt, 'number');
   assert.equal(cur.player1Email, 'h@x.com');
 });
+
+test('test_SessionExposesFinished_current_session_reflects_persisted_hasFinished', async () => {
+  const redis = new FakeRedis();
+  const session = createSessionManager(redis, {}, () => {});
+  await session.registerPlayers('a@x.com', 'b@x.com');
+  await session.onRaceStarted();
+  assert.equal((await session.getCurrentSession()).player1Finished, false);
+  await session.onHasFinished({ playerId: 1 });
+  const cur = await session.getCurrentSession();
+  assert.equal(cur.player1Finished, true); assert.equal(cur.player2Finished, false);
+});

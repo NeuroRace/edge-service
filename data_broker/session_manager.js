@@ -251,6 +251,9 @@ function createSessionManager(redis, config, log, hooks = {}) {
       player2Email: session.player2Email,
       player1IsBot: session.player1IsBot === 'true',
       player2IsBot: session.player2IsBot === 'true',
+      // hasFinished ja consolidado (claim persistido) — sobrevive a reload da tela.
+      player1Finished: session.player1Dispatched === 'true',
+      player2Finished: session.player2Dispatched === 'true',
     };
     if (pending) out.pending = pending;
     return out;

@@ -123,7 +123,7 @@
     const sig = S.signalStatus({ lastPacketAt: pk && pk.at, now, poorSignalLevel: pk && pk.psl });
     const link = $(`[data-link="${slot}"]`); link.dataset.linkState = sig.link;
     const age = pk ? Math.round((now - pk.at) / 1000) : null;
-    link.innerHTML = `<i class="dot"></i> ${pk ? (sig.link === 'ok' ? 'conectado' : `último pacote há ${age} s`) : 'sem pacotes'}`;
+    link.replaceChildren(Object.assign(document.createElement('i'), { className: 'dot' }), document.createTextNode(' ' + (pk ? (sig.link === 'ok' ? 'conectado' : `último pacote há ${age} s`) : 'sem pacotes')));
     $(`[data-attn="${slot}"]`).textContent = pk && sig.link !== 'lost' ? String(pk.attention) : '—';
     const q = $(`[data-quality="${slot}"]`); q.dataset.q = sig.quality;
     q.textContent = `contato: ${sig.quality === 'good' ? 'bom' : sig.quality === 'weak' ? 'fraco' : sig.link === 'lost' ? '—' : 'sem contato'}`;
@@ -137,9 +137,25 @@
     chip.textContent = d.enabled ? `Nuvem: ligada → ${d.target || '?'}` : 'Nuvem: DESLIGADA';
     const c = d.counts || {};
     counts.textContent = `fila ${c.queue ?? '—'} · enviando ${c.processing ?? '—'} · falhas ${c.deadletter ?? '—'} · descartadas ${h.discardedRaces ?? 0}`;
+    // Dados do Redis/nuvem NUNCA entram como HTML (achado do critico codex): so textContent.
     const tbody = $('[data-history]'); const rows = (st.history || []).slice(0, 10);
-    tbody.innerHTML = rows.length ? rows.map((r) => `<tr><td class="mono">${new Date(r.at).toLocaleTimeString('pt-BR')}</td><td>Jogador ${r.playerId}</td><td class="mono">${r.email || '—'}</td><td class="result" data-r="${r.status}">${r.status === 'sent' ? `Enviada ✓ (${r.result || 'ok'})` : `Falhou: ${r.reason || 'erro'}`}</td></tr>`).join('')
-      : '<tr class="empty"><td colspan="4">Nenhuma corrida enviada ainda nesta sessão do broker.</td></tr>';
+    tbody.replaceChildren();
+    if (rows.length === 0) {
+      const tr = document.createElement('tr'); tr.className = 'empty';
+      const td = document.createElement('td'); td.colSpan = 4; td.textContent = 'Nenhuma corrida enviada ainda nesta sessão do broker.';
+      tr.appendChild(td); tbody.appendChild(tr); return;
+    }
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      const cell = (text, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; td.textContent = text; tr.appendChild(td); return td; };
+      cell(new Date(Number(r.at)).toLocaleTimeString('pt-BR'), 'mono');
+      cell(`Jogador ${Number(r.playerId) || '?'}`);
+      cell(String(r.email || '—'), 'mono');
+      const ok = r.status === 'sent';
+      const res = cell(ok ? `Enviada ✓ (${String(r.result || 'ok')})` : `Falhou: ${String(r.reason || 'erro')}`, 'result');
+      res.dataset.r = ok ? 'sent' : 'deadletter';
+      tbody.appendChild(tr);
+    }
   }
   function renderBanner() {
     const now = Date.now();
@@ -149,7 +165,8 @@
     const banner = $('[data-banner]');
     banner.hidden = list.length === 0;
     banner.dataset.level = list.some((a) => a.level === 'error') ? 'error' : 'warn';
-    $('#banner-list').innerHTML = list.map((a) => `<li data-level="${a.level}" data-code="${a.code}">${a.text}</li>`).join('');
+    const ul = $('#banner-list'); ul.replaceChildren();
+    for (const a of list) { const li = document.createElement('li'); li.dataset.level = a.level; li.dataset.code = a.code; li.textContent = a.text; ul.appendChild(li); }
   }
   function render() { renderCards(); renderSignal(1); renderSignal(2); renderCloud(); renderBanner(); }
 

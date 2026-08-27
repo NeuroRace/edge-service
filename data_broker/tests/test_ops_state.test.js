@@ -64,3 +64,19 @@ test('test_OpsState_cardState_survives_page_reload_history_implies_sent', () => 
   assert.equal(S.cardState({ slot: 1, session: active, pending: null, raceEvents: {}, history: hist }), 'sent');
   assert.equal(S.cardState({ slot: 2, session: active, pending: null, raceEvents: {}, history: hist }), 'rejected');
 });
+
+test('test_OpsState_history_is_correlated_by_sessionId_not_time', () => {
+  // Envio atrasado da corrida ANTERIOR (sessionId diferente) chega depois da largada da atual.
+  const active = { status: 'active', sessionId: 's2', player1Email: 'a@x.com', player2Email: 'b@x.com', player1IsBot: false, player2IsBot: false, startedAt: 100 };
+  const late = [{ jobId: 'j-old', sessionId: 's1', playerId: 1, status: 'sent', at: 150 }];
+  assert.equal(S.cardState({ slot: 1, session: active, pending: null, raceEvents: {}, history: late }), 'racing', 'resultado de outra sessao nao conta');
+  const mine = [{ jobId: 'j-new', sessionId: 's2', playerId: 1, status: 'sent', at: 150 }];
+  assert.equal(S.cardState({ slot: 1, session: active, pending: null, raceEvents: {}, history: mine }), 'sent');
+});
+
+test('test_OpsState_finished_flag_from_session_survives_reload_before_dispatch', () => {
+  // hasFinished ja aconteceu (flag persistida), mas o dispatcher ainda nao enviou (fila) e a pagina recarregou.
+  const active = { status: 'active', sessionId: 's1', player1Email: 'a@x.com', player2Email: 'b@x.com', player1IsBot: false, player2IsBot: false, startedAt: 100, player1Finished: true, player2Finished: false };
+  assert.equal(S.cardState({ slot: 1, session: active, pending: null, raceEvents: {}, history: [] }), 'finished');
+  assert.equal(S.cardState({ slot: 2, session: active, pending: null, raceEvents: {}, history: [] }), 'racing');
+});

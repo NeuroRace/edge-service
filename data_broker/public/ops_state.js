@@ -29,11 +29,15 @@
     }
     if (session && session.status === 'active') {
       if (session[`${key}IsBot`]) return 'anonymous';
-      // Historico da sessao atual manda: a pagina pode ter sido aberta DEPOIS do hasFinished.
+      // Historico da sessao atual manda (a pagina pode ter sido aberta DEPOIS do hasFinished).
+      // Correlacao por sessionId — um envio atrasado da corrida anterior nao pode "fechar" a atual.
+      // Entradas antigas sem sessionId (broker anterior) caem no criterio de tempo.
       const startedAt = Number(session.startedAt) || 0;
-      const mine = (history || []).filter((h) => h.playerId === slot && Number(h.at) >= startedAt);
+      const mine = (history || []).filter((h) => h.playerId === slot
+        && (h.sessionId ? h.sessionId === session.sessionId : Number(h.at) >= startedAt));
       if (mine.length > 0) return mine[0].status === 'sent' ? 'sent' : 'rejected';
-      if (raceEvents && raceEvents[slot]) return 'finished';
+      // Flag persistida no Redis (hasFinished ja consolidou) ou evento visto por esta pagina.
+      if (session[`${key}Finished`] || (raceEvents && raceEvents[slot])) return 'finished';
       return 'racing';
     }
     return 'waiting';
