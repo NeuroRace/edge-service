@@ -10,6 +10,8 @@
 // Esta fase NAO envia nada para a Cloud. O `dispatch:queue` e apenas produzido
 // (dado persistido aguardando o dispatcher do Stage 3).
 const { randomUUID } = require('node:crypto');
+// Mesma regra de e-mail da tela de operacao (public/ops_state.js): um so lugar.
+const { normalizeEmail, validateEmail } = require('./public/ops_state');
 
 // ioredis `multi().exec()` resolve com um array de tuplas [err, result] e NAO
 // rejeita quando um comando individual falha — so rejeita em abort de transacao.
@@ -30,13 +32,28 @@ async function execMulti(multi) {
 function createSessionManager(redis, config, log, hooks = {}) {
   // Identificacao por UUID Supabase ainda nao implementada (Stage 3 / NEU-37).
   // Ate la, todo e-mail e registrado sem validacao remota (`validated: false`).
-  async function validateEmail(email) {
+  async function validateEmailRemote(email) {
     return { email, uuid: null, validated: false };
   }
 
-  async function registerPlayers(player1Email, player2Email) {
-    const player1 = await validateEmail(player1Email);
-    const player2 = await validateEmail(player2Email);
+  // D15 (NEU-68): normaliza (lower/trim) e valida o formato no edge, sem consultar a
+  // nuvem. Vazio = anonimo (permitido). Invalido -> erro com code/field (HTTP 400).
+  function checkEmail(raw, field) {
+    const email = normalizeEmail(raw);
+    if (!validateEmail(email)) {
+      const err = new Error(`e-mail invalido em ${field}`);
+      err.code = 'invalid_email';
+      err.field = field;
+      throw err;
+    }
+    return email;
+  }
+
+  async function registerPlayers(rawPlayer1Email, rawPlayer2Email) {
+    const player1Email = checkEmail(rawPlayer1Email, 'player1Email');
+    const player2Email = checkEmail(rawPlayer2Email, 'player2Email');
+    const player1 = await validateEmailRemote(player1Email);
+    const player2 = await validateEmailRemote(player2Email);
 
     await execMulti(
       redis
@@ -219,13 +236,24 @@ function createSessionManager(redis, config, log, hooks = {}) {
 
   async function getCurrentSession() {
     const session = await redis.hgetall('session:current');
-    if (!session || !session.id) return { status: 'none' };
-    return {
+    // `pending` = jogadores registrados para a PROXIMA corrida (tela de operacao).
+    const pendingRaw = await redis.hgetall('pending:players');
+    const pending = pendingRaw && pendingRaw.player1Email !== undefined
+      ? { player1Email: pendingRaw.player1Email, player2Email: pendingRaw.player2Email }
+      : null;
+    // `pending` so aparece quando existe (mantem o shape antigo para os chamadores atuais).
+    if (!session || !session.id) return pending ? { status: 'none', pending } : { status: 'none' };
+    const out = {
       status: session.status,
       sessionId: session.id,
+      startedAt: Number(session.startedAt),
       player1Email: session.player1Email,
       player2Email: session.player2Email,
+      player1IsBot: session.player1IsBot === 'true',
+      player2IsBot: session.player2IsBot === 'true',
     };
+    if (pending) out.pending = pending;
+    return out;
   }
 
   // Ultimas corridas enviadas/rejeitadas pelo dispatcher (mais recente primeiro) — NEU-68.

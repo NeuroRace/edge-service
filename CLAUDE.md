@@ -14,7 +14,7 @@ Guia para agentes de IA (e humanos) trabalharem neste repo. Leia antes de mexer.
 O lado **edge** (kiosk) do NeuroRace: captura EEG/gestos em tempo real, faz broadcast, **persiste o resultado da corrida** localmente (Redis) e o **sincroniza** com a API na nuvem (Supabase). Fluxo: `capturar → broadcast + persistir (dispatch:queue) → dispatcher → cloud`. O par na nuvem é o `../cloud-backend/`; o contrato de escrita edge→cloud está em `docs/cloud-sync-contract.md`.
 
 ## Layout
-- `data_broker/` — broker Socket.IO (Node 22, CommonJS): validação de contratos (`event_contracts.js`), persistência da corrida (`session_manager.js`), dispatcher para a nuvem (`api_dispatcher.js`), health + API HTTP (`http_server.js`).
+- `data_broker/` — broker Socket.IO (Node 22, CommonJS): validação de contratos (`event_contracts.js`), persistência da corrida (`session_manager.js`), dispatcher para a nuvem (`api_dispatcher.js`), health + API HTTP (`http_server.js`), tela de operação estática em `public/` (`GET /`; regra de e-mail compartilhada em `public/ops_state.js`, testada em Node).
 - `eeg_acquisition/` — aquisição EEG + simulador (Python).
 - `gesture_detector/` — gesto por webcam (fora do Compose). `test_client/` — cliente que só escuta eventos.
 - `docs/` — `event-contracts.md`, `cloud-sync-contract.md`, `superpowers/{specs,plans}/`.
