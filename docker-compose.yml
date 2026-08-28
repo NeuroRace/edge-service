@@ -16,6 +16,11 @@ services:
       REDIS_URL: redis://redis:6379
       API_URL: ${API_URL:-}
       EDGE_INGEST_TOKEN: ${EDGE_INGEST_TOKEN:-}
+      # Tempos do dispatcher (defaults = config.js). Num evento com rede instavel,
+      # valores menores evitam que uma corrida segure a fila por minutos (NEU-82).
+      DISPATCH_HTTP_TIMEOUT_MS: ${DISPATCH_HTTP_TIMEOUT_MS:-15000}
+      DISPATCH_MAX_ATTEMPTS: ${DISPATCH_MAX_ATTEMPTS:-8}
+      DISPATCH_BACKOFF_MAX_MS: ${DISPATCH_BACKOFF_MAX_MS:-10000}
     ports:
       - "3000:3000"
     depends_on:
@@ -23,23 +28,26 @@ services:
 
   simulator-a:
     build: ./eeg_acquisition
+    # simulator.py aceita UMA conexao e sai: sem restart, morre na 1a reconexao do acquisition.
+    restart: unless-stopped
     environment:
       ACQ_PORT: 13854
       PACKET_INTERVAL: 1.0
     command: python simulator.py
     ports: 
       - "13854:13854"
-    profiles: ['sim-local', 'sim-dual']
+    profiles: ['sim-local', 'sim-dual', 'banca']
 
   simulator-b:
     build: ./eeg_acquisition
+    restart: unless-stopped
     environment:
       ACQ_PORT: 13855
       PACKET_INTERVAL: 1.0
     command: python simulator.py
     ports:
       - "13855:13855"
-    profiles: ['sim-local', 'hybrid-local', 'live']
+    profiles: ['sim-local', 'hybrid-local', 'live', 'banca']
 
   acquisition-a:
     build: ./eeg_acquisition
@@ -76,6 +84,39 @@ services:
       - simulator-b
     profiles: ['sim-local', 'hybrid-local', 'live']
   
+  # Perfil `banca` (NEU-82): 2 jogadores HUMANOS simulados — banca do NEXT sem NeuroSky.
+  # Ambos SOURCE=real (sobem para a nuvem quando registrados com e-mail); os acquisitions
+  # apontam para os simuladores (nao para o host). Nao altera acquisition-a/b dos outros perfis.
+  acquisition-a-sim:
+    build: ./eeg_acquisition
+    environment:
+      PLAYER_ID: 1
+      ACQ_PORT: 13854
+      EEG_HOST: simulator-a
+      BROKER_URL: http://broker:3000
+      POOR_SIGNAL_LEVEL_THRESHOLD: 0
+      SOURCE: real
+    command: python acquisition_service.py
+    depends_on:
+      - broker
+      - simulator-a
+    profiles: ['banca']
+
+  acquisition-b-sim:
+    build: ./eeg_acquisition
+    environment:
+      PLAYER_ID: 2
+      ACQ_PORT: 13855
+      EEG_HOST: simulator-b
+      BROKER_URL: http://broker:3000
+      POOR_SIGNAL_LEVEL_THRESHOLD: 0
+      SOURCE: real
+    command: python acquisition_service.py
+    depends_on:
+      - broker
+      - simulator-b
+    profiles: ['banca']
+
   test-client:
     build: ./test_client
     environment:

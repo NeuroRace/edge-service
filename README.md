@@ -24,15 +24,16 @@ Perfis disponiveis em `docker-compose.yml`:
 - `sim-dual`
 - `hybrid-local`
 - `live`
+- `banca` — 2 simuladores + 2 jogadores **humanos** simulados (`acquisition-a-sim`/`acquisition-b-sim`, ambos `SOURCE=real`). E a configuracao da banca/NEXT sem NeuroSky: `docker compose --profile banca up`. Validacao mecanica: `scripts/validate-compose-banca.sh`.
 
-O broker depende do servico `redis` (persistencia da corrida) e o Compose o sobe automaticamente via `depends_on`. O envio para a nuvem (dispatcher) e opt-in: so roda quando `API_URL` e `EDGE_INGEST_TOKEN` estao definidos; sem eles o resultado da corrida e persistido em `dispatch:queue` mas nao enviado. Use `data_broker/.env.example` como base para a config local (`data_broker/.env`, gitignored).
+O broker depende do servico `redis` (persistencia da corrida) e o Compose o sobe automaticamente via `depends_on`. O envio para a nuvem (dispatcher) e opt-in: so roda quando `API_URL` e `EDGE_INGEST_TOKEN` estao definidos; sem eles o resultado da corrida e persistido em `dispatch:queue` mas nao enviado. Para o Compose, defina-os no `.env` da **raiz** (base: `.env.example` da raiz, gitignored); `data_broker/.env.example` e a base para rodar o broker com `node` no host.
 
 ## Modos de execucao
 
 O broker sempre persiste o resultado da corrida no Redis (dependencia do Compose). O envio para a nuvem e opt-in:
 
 - **Sem envio a nuvem (padrao / desenvolvimento):** nao defina `API_URL`. O resultado e persistido em `dispatch:queue` e nada e enviado. Ex.: `docker compose --profile sim-local up`.
-- **Com envio a nuvem:** defina `API_URL` e `EDGE_INGEST_TOKEN` em `data_broker/.env` e suba o stack. O dispatcher consome a fila e envia cada corrida para a funcao `ingest-race`.
+- **Com envio a nuvem:** defina `API_URL` e `EDGE_INGEST_TOKEN` no **`.env` da RAIZ do repo** (base: `.env.example` da raiz — e esse arquivo que o `docker-compose.yml` interpola; variavel exportada no shell tem precedencia sobre ele; `data_broker/.env` so vale para `node index.js` no host) e suba o stack. O dispatcher consome a fila e envia cada corrida para a funcao `ingest-race`. **Sem o `.env` da raiz (e sem a variavel exportada no shell), qualquer `docker compose up` sobe o broker com o dispatcher desligado em silencio** (`dispatcher_disabled` no log; `/health` segue "ok") — confira o log do broker apos subir.
 
 O que o Supabase precisa fornecer para o envio:
 
