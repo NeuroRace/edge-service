@@ -44,6 +44,10 @@ Nao sao usadas a anon key nem `Authorization` (a funcao roda com `verify_jwt=fal
 
 Nota sobre os simuladores: no perfil `sim-local`, o `acquisition-a` (jogador 1) aponta para `host.docker.internal` por padrao (leitor EEG real no host). Para uma corrida 100% simulada, aponte-o para o `simulator-a` (`EEG_HOST=simulator-a`). O `acquisition-b` usa `SOURCE=bot` e, por ser bot, nao e despachado para a nuvem.
 
+## Tela de operacao (NEU-68)
+
+O broker serve em `GET /` (ex.: `http://localhost:3000/`) a tela do operador do estande: registrar os e-mails dos 2 jogadores antes da largada (vazio = anonimo, nao vai para a nuvem), acompanhar o estado de cada jogador (Registrado -> Correndo -> Finalizada -> Enviada), o sinal ao vivo de cada leitor (conexao, contato, atencao, ultimos 60 s) e a nuvem (ligada/desligada, fila, ultimas corridas). Um banner aparece SO quando ha problema (corrida iniciada sem e-mails, leitor sem sinal, nuvem desligada, fila parada). HTML/CSS/JS puros em `data_broker/public/`, sem dependencia externa (funciona offline), CSP estrita, sem autenticacao (kiosk local — D10). E-mails sao normalizados (minusculas, sem espacos) e validados no broker: formato invalido responde `400 {error:"invalid_email", field}`.
+
 ## Dead-letter, historico e requeue (operacao)
 
 - `dispatch:deadletter` guarda cada corrida rejeitada com o registro original em `raw` (campo obrigatorio em todos os motivos: `exhausted`, `permanent`, `mapping_failed`, `malformed_record`). **Requeue manual** = devolver o `raw` a fila:
@@ -55,6 +59,7 @@ Nota sobre os simuladores: no perfil `sim-local`, o `acquisition-a` (jogador 1) 
   ```
 - `GET /health` expoe `dispatcher` (ligado/desligado + motivo, alvo, ultimo poll, contadores da fila) e `discardedRaces` (corridas de jogador sem e-mail registrado — NEU-73). O `status` e sempre `ok`: o dispatcher morto nao derruba o broadcast.
 - `GET /api/dispatch/history` lista as ultimas 20 corridas enviadas/rejeitadas (e-mail mascarado).
+- `GET /api/session/current` inclui `player1IsBot`/`player2IsBot`, `startedAt` e, quando ha jogadores registrados para a proxima corrida, `pending`.
 
 ## Variaveis operacionais do acquisition
 

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NeuroRace · Operação</title>
+  <link rel="stylesheet" href="/ops.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="brand-neuro">NEURO</span><span class="brand-race">RACE</span> <span class="brand-sub">operação do estande</span></div>
+    <div class="top-right"><span class="mono" id="clock">--:--:--</span></div>
+  </header>
+
+  <div class="banner" data-banner hidden role="alert" aria-live="assertive"><ul id="banner-list"></ul></div>
+
+  <main class="grid">
+    <section class="block" data-block="players" aria-labelledby="h-players">
+      <h2 id="h-players"><span class="eyebrow">1</span> Jogadores desta corrida</h2>
+      <form id="register-form" class="cards" novalidate>
+        <div class="card" data-slot="1">
+          <div class="card-head"><span class="slot">Jogador 1</span><span class="state-chip mono" data-state-chip="1">Aguardando</span></div>
+          <label class="label" for="email1">E-mail (deixe em branco para anônimo)</label>
+          <input id="email1" name="player1Email" type="email" autocomplete="off" spellcheck="false" placeholder="jogador@exemplo.com" inputmode="email">
+          <div class="field-error mono" data-error="1" hidden></div>
+          <ol class="steps mono" data-steps="1" aria-label="Etapas do jogador 1">
+            <li data-step="registered">Registrado</li><li data-step="racing">Correndo</li><li data-step="finished">Finalizada</li><li data-step="sent">Enviada</li>
+          </ol>
+        </div>
+        <div class="card" data-slot="2">
+          <div class="card-head"><span class="slot">Jogador 2</span><span class="state-chip mono" data-state-chip="2">Aguardando</span></div>
+          <label class="label" for="email2">E-mail (deixe em branco para anônimo)</label>
+          <input id="email2" name="player2Email" type="email" autocomplete="off" spellcheck="false" placeholder="jogador@exemplo.com" inputmode="email">
+          <div class="field-error mono" data-error="2" hidden></div>
+          <ol class="steps mono" data-steps="2" aria-label="Etapas do jogador 2">
+            <li data-step="registered">Registrado</li><li data-step="racing">Correndo</li><li data-step="finished">Finalizada</li><li data-step="sent">Enviada</li>
+          </ol>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn-primary" id="register-btn">Registrar jogadores</button>
+          <span class="hint mono" id="register-hint">Registre antes da largada. O registro vale por 1 hora.</span>
+        </div>
+      </form>
+    </section>
+
+    <section class="block" data-block="signal" aria-labelledby="h-signal">
+      <h2 id="h-signal"><span class="eyebrow">2</span> Sinal ao vivo</h2>
+      <div class="signals">
+        <div class="signal" data-signal="1">
+          <div class="signal-head"><span class="slot">Jogador 1</span><span class="link mono" data-link="1"><i class="dot"></i> sem pacotes</span></div>
+          <div class="signal-body"><div class="attn"><span class="attn-num mono" data-attn="1">—</span><span class="attn-label">atenção</span><span class="quality mono" data-quality="1">contato: —</span></div>
+          <svg class="spark" viewBox="0 0 240 48" preserveAspectRatio="none" aria-hidden="true"><path data-spark="1" d=""></path></svg></div>
+        </div>
+        <div class="signal" data-signal="2">
+          <div class="signal-head"><span class="slot">Jogador 2</span><span class="link mono" data-link="2"><i class="dot"></i> sem pacotes</span></div>
+          <div class="signal-body"><div class="attn"><span class="attn-num mono" data-attn="2">—</span><span class="attn-label">atenção</span><span class="quality mono" data-quality="2">contato: —</span></div>
+          <svg class="spark" viewBox="0 0 240 48" preserveAspectRatio="none" aria-hidden="true"><path data-spark="2" d=""></path></svg></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" data-block="cloud" aria-labelledby="h-cloud">
+      <h2 id="h-cloud"><span class="eyebrow">3</span> Nuvem</h2>
+      <div class="cloud-row">
+        <span class="chip mono" data-cloud-chip>Nuvem: —</span>
+        <span class="counts mono" data-counts>fila — · enviando — · falhas —</span>
+      </div>
+      <table class="history" aria-label="Últimas corridas enviadas">
+        <thead><tr><th>Hora</th><th>Jogador</th><th>E-mail</th><th>Resultado</th></tr></thead>
+        <tbody data-history><tr class="empty"><td colspan="4">Nenhuma corrida enviada ainda nesta sessão do broker.</td></tr></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/ops_state.js"></script>
+  <script src="/ops.js"></script>
+</body>
+</html>
