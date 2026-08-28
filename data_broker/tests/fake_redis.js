@@ -4,6 +4,7 @@
 // (LMOVE/BLMOVE/LREM/LPUSH/RPUSH) e MULTI/EXEC para o claim atomico.
 // NAO e um arquivo de teste (sem `.test.`), entao node --test nao o executa.
 const { EventEmitter } = require('node:events');
+const assert = require('node:assert/strict');
 
 class FakeRedis extends EventEmitter {
   constructor() {
@@ -69,6 +70,22 @@ class FakeRedis extends EventEmitter {
     return (this.lists.get(key) || []).length;
   }
 
+  async ltrim(key, start, stop) {
+    // Precondicao explicita: indices nao-inteiros falhariam em silencio no double
+    // (o Redis real responde ERR). Falha alto para nao mascarar bug de teste.
+    assert.ok(Number.isInteger(start) && Number.isInteger(stop), `ltrim(${key}): start/stop devem ser inteiros`);
+    const list = this.lists.get(key);
+    if (!list) return 'OK';
+    const len = list.length;
+    let s = start < 0 ? len + start : start;
+    let e = stop < 0 ? len + stop : stop;
+    if (s < 0) s = 0;
+    if (e >= len) e = len - 1;
+    const kept = s > e ? [] : list.slice(s, e + 1);
+    if (kept.length === 0) this.lists.delete(key); else this.lists.set(key, kept);
+    return 'OK';
+  }
+
   async lpush(key, ...values) {
     if (!this.lists.has(key)) this.lists.set(key, []);
     const list = this.lists.get(key);
@@ -130,7 +147,7 @@ class FakeRedis extends EventEmitter {
   multi() {
     const ops = [];
     const proxy = {};
-    const methods = ['hset', 'del', 'rpush', 'expire', 'hsetnx', 'hdel', 'lrange'];
+    const methods = ['hset', 'del', 'rpush', 'expire', 'hsetnx', 'hdel', 'lrange', 'lpush', 'ltrim', 'lrem'];
     for (const m of methods) {
       proxy[m] = (...args) => {
         ops.push([m, args]);

@@ -11,7 +11,9 @@ const config = loadBrokerConfig();
 const log = createBrokerLogger();
 const runtimeState = createRuntimeState();
 const redis = createRedisClient(config, log);
-const session = createSessionManager(redis, config, log);
+const session = createSessionManager(redis, config, log, {
+  onDiscarded: () => runtimeState.markRaceDiscarded(),
+});
 const server = createHttpServer(() => runtimeState.snapshot(), session, log);
 const io = createSocketServer(server, config.allowedOrigins);
 
@@ -22,15 +24,21 @@ registerSocketHandlers(io, log, runtimeState, session);
 if (config.apiUrl && config.edgeIngestToken) {
   const redisBlocking = createBlockingRedisClient(config, log);
   const dispatcher = createDispatcher(redisBlocking, config, log);
-  dispatcher.start().catch((err) =>
-    log('error', 'dispatcher_fatal', { message: err?.message ?? String(err) }),
-  );
+  runtimeState.setDispatcherState(() => dispatcher.getState());
+  dispatcher.start().catch((err) => {
+    log('error', 'dispatcher_fatal', { message: err?.message ?? String(err) });
+    // D11: o /health continua 200 (derrubar o broker mataria o broadcast), mas passa a
+    // dizer que o dispatcher morreu em vez de esconder (NEU-69).
+    runtimeState.setDispatcherState(() => ({ ...dispatcher.getState(), enabled: false, reason: 'dispatcher_fatal' }));
+  });
 } else if (config.apiUrl && !config.edgeIngestToken) {
   log('error', 'dispatch_token_missing', {
     hint: 'API_URL setado mas EDGE_INGEST_TOKEN vazio; dispatcher NAO iniciado (jobs ficam em dispatch:queue) para nao dead-letter tudo com 401',
   });
+  runtimeState.setDispatcherState(() => ({ enabled: false, reason: 'token_missing' }));
 } else {
   log('warn', 'dispatcher_disabled', { reason: 'API_URL nao definido' });
+  runtimeState.setDispatcherState(() => ({ enabled: false, reason: 'api_url_missing' }));
 }
 
 server.listen(config.port, () => {
