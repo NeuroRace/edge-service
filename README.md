@@ -48,7 +48,7 @@ Nota sobre os simuladores: no perfil `sim-local`, o `acquisition-a` (jogador 1) 
 
 Passo a passo para subir e operar o estande sem NeuroSky, com o que ver em cada passo e o que fazer quando o banner aparece: `docs/banca-runbook.md`.
 
-Com NeuroSky real (ThinkGear Connector, NeuroSky no mesmo PC ou em outro, ensaio com critérios e cenários de falha): `docs/neurosky-ensaio-runbook.md`.
+Com NeuroSky real, em 2 PCs ligados por cabo (NeuroSky e jogo em um, broker e painel no outro), validado em 25/09: `docs/neurosky-ensaio-runbook.md`.
 
 ## Tela de operacao (NEU-68)
 
