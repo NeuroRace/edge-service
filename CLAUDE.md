@@ -63,5 +63,6 @@ Baseline verde de referência (main `9036e21`, verificado 2026-07-02): **`node -
 - Bootstrap e modos de execução: `README.md`.
 - Specs/planos: `docs/superpowers/{specs,plans}/`. Contrato edge→cloud: `docs/cloud-sync-contract.md`. Par na nuvem: `../cloud-backend/`.
 - **Roteiro do operador (banca/NEXT, NEU-82):** `docs/banca-runbook.md`.
+- **NeuroSky real em 2 PCs (validado 25/09):** `docs/neurosky-ensaio-runbook.md`. O TGC só escuta em `127.0.0.1:13854`, então a aquisição roda no PC do sensor. O jogo (Unreal) usa `localhost:3000` fixo, então o PC do jogo redireciona essa porta (`netsh portproxy`) para o PC do broker. Jogo falso que só emite `raceStarted`/`hasFinished`, sem telemetria: `data_broker/e2e/jogo-falso.js`.
 - **Teste E2E local (NEU-70):** runbook em `docs/e2e-local-runbook.md` (esteira edge→cloud local, sem tocar produção). Harness produtor de corrida (faz o papel do game-engine + tela de ops): `data_broker/e2e/race-producer.js` — ferramenta de teste, recusa alvo não-local.
 - Follow-ups no Linear: **NEU-68** (dashboard de emails), **NEU-69** (tech-debt do dispatcher), **NEU-17** (identificação / `player_uuid`).

@@ -48,6 +48,8 @@ Nota sobre os simuladores: no perfil `sim-local`, o `acquisition-a` (jogador 1) 
 
 Passo a passo para subir e operar o estande sem NeuroSky, com o que ver em cada passo e o que fazer quando o banner aparece: `docs/banca-runbook.md`.
 
+Com NeuroSky real, em 2 PCs ligados por cabo (NeuroSky e jogo em um, broker e painel no outro), validado em 25/09: `docs/neurosky-ensaio-runbook.md`.
+
 ## Tela de operacao (NEU-68)
 
 O broker serve em `GET /` (ex.: `http://localhost:3000/`) a tela do operador do estande: registrar os e-mails dos 2 jogadores antes da largada (vazio = anonimo, nao vai para a nuvem), acompanhar o estado de cada jogador (Registrado -> Correndo -> Finalizada -> Enviada), o sinal ao vivo de cada leitor (conexao, contato, atencao, ultimos 60 s) e a nuvem (ligada/desligada, fila, ultimas corridas). Um banner aparece SO quando ha problema (corrida iniciada sem e-mails, leitor sem sinal, nuvem desligada, fila parada). HTML/CSS/JS puros em `data_broker/public/`, sem dependencia externa (funciona offline), CSP estrita, sem autenticacao (kiosk local — D10). E-mails sao normalizados (minusculas, sem espacos) e validados no broker: formato invalido responde `400 {error:"invalid_email", field}`.
