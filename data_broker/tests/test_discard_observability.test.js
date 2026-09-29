@@ -26,6 +26,7 @@ test('test_DiscardIsLoud_human_finish_does_not_call_hook', async () => {
   const session = createSessionManager(redis, {}, () => {}, { onDiscarded: () => { discarded += 1; } });
   await session.registerPlayers('h@x.com', '');
   await session.onRaceStarted();
+  await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
   await session.onHasFinished({ playerId: 1 });
   assert.equal(discarded, 0);
   assert.equal(await redis.llen('dispatch:queue'), 1);

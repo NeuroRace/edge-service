@@ -21,6 +21,8 @@ services:
       DISPATCH_HTTP_TIMEOUT_MS: ${DISPATCH_HTTP_TIMEOUT_MS:-15000}
       DISPATCH_MAX_ATTEMPTS: ${DISPATCH_MAX_ATTEMPTS:-8}
       DISPATCH_BACKOFF_MAX_MS: ${DISPATCH_BACKOFF_MAX_MS:-10000}
+      # Corrida humana com menos pacotes de EEG que isto e descartada (NEU-104).
+      MIN_EEG_PACKETS: ${MIN_EEG_PACKETS:-1}
     ports:
       - "3000:3000"
     depends_on:

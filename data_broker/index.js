@@ -12,7 +12,7 @@ const log = createBrokerLogger();
 const runtimeState = createRuntimeState();
 const redis = createRedisClient(config, log);
 const session = createSessionManager(redis, config, log, {
-  onDiscarded: () => runtimeState.markRaceDiscarded(),
+  onDiscarded: (info) => runtimeState.markRaceDiscarded(info && info.reason),
 });
 const server = createHttpServer(() => runtimeState.snapshot(), session, log);
 const io = createSocketServer(server, config.allowedOrigins);

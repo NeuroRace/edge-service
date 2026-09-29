@@ -74,6 +74,7 @@ test('onHasFinished e idempotente: segundo evento do mesmo jogador e ignorado (c
   const { redis, session } = makeSession();
   await session.registerPlayers('human@x.com', '');
   await session.onRaceStarted();
+  await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
 
   await session.onHasFinished({ playerId: 1 });
   await session.onHasFinished({ playerId: 1 }); // duplicado
@@ -97,6 +98,7 @@ test('REGRESSAO C3: flags Dispatched nao vazam entre corridas — 2a corrida per
   // Corrida 1
   await session.registerPlayers('human@x.com', '');
   await session.onRaceStarted();
+  await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
   await session.onHasFinished({ playerId: 1 });
   assert.equal((await redis.lrange('dispatch:queue', 0, -1)).length, 1);
 
@@ -156,6 +158,7 @@ test('onHasFinished libera o claim em falha para permitir reprocessamento', asyn
   const session = createSessionManager(redis, {}, noopLog);
   await session.registerPlayers('human@x.com', '');
   await session.onRaceStarted();
+  await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
 
   await assert.rejects(() => session.onHasFinished({ playerId: 1 }), /indisponivel/);
   // flag liberada -> retry funciona

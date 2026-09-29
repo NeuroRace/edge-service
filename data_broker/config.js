@@ -22,6 +22,8 @@ function loadBrokerConfig(env = process.env) {
     dispatchMaxAttempts: Number(env.DISPATCH_MAX_ATTEMPTS || 8),
     dispatchBlockTimeoutSec: Number(env.DISPATCH_BLOCK_TIMEOUT_SEC || 5),
     dispatchHttpTimeoutMs: Number(env.DISPATCH_HTTP_TIMEOUT_MS || 15000),
+    // NEU-104: corrida humana com menos pacotes eSense que isto e descartada (sem EEG).
+    minEegPackets: Number(env.MIN_EEG_PACKETS || 1),
   };
 }
 

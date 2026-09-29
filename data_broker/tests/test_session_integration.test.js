@@ -48,12 +48,14 @@ test('integracao: flag Dispatched nao vaza entre corridas (HSETNX real)', { skip
     // Corrida 1
     await session.registerPlayers('a@x.com', '');
     await session.onRaceStarted();
+    await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
     await session.onHasFinished({ playerId: 1 });
     await session.onHasFinished({ playerId: 1 }); // duplicado real -> HSETNX bloqueia
 
     // Corrida 2
     await session.registerPlayers('b@x.com', '');
     await session.onRaceStarted();
+    await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
     await session.onHasFinished({ playerId: 1 });
 
     const queue = await redis.lrange('dispatch:queue', 0, -1);
