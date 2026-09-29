@@ -2,12 +2,21 @@
 // Consome dispatch:queue e entrega cada resultado de corrida a Edge Function
 // ingest-race (Supabase). Fila confiavel via BLMOVE -> dispatch:processing com
 // recuperacao no boot; dead-letter para falhas permanentes/esgotadas/malformadas;
-// retry in-line com backoff e timeout HTTP. Ver spec §5.
+// timeout HTTP. Ver spec §5.
+//
+// NEU-92: falha transitoria NAO retenta em linha (isso segurava a fila inteira durante
+// uma queda da nuvem). O job sai de processing para dispatch:retry (ZSET, score = hora
+// da proxima tentativa, com backoff) e o dispatcher segue para o proximo. Quando vence,
+// o job volta para o fim da fila. O contador de tentativas fica em dispatch:attempts
+// (hash por jobId), para o registro seguir intacto ate o dead-letter.
 const { toCanonicalBody } = require('./dispatch_mapping');
+const { execMulti } = require('./session_manager');
 
 const QUEUE = 'dispatch:queue';
 const PROCESSING = 'dispatch:processing';
 const DEADLETTER = 'dispatch:deadletter';
+const RETRY = 'dispatch:retry';
+const ATTEMPTS = 'dispatch:attempts';
 // Historico curto (ultimas N corridas enviadas/rejeitadas) para a tela de operacao (NEU-68).
 const HISTORY = 'dispatch:history';
 const HISTORY_MAX = 20;
@@ -88,7 +97,7 @@ function createDispatcher(
     lastSuccessAt: null,
     lastErrorAt: null,
     inFlightJobId: null,
-    counts: { queue: null, processing: null, deadletter: null },
+    counts: { queue: null, processing: null, retrying: null, deadletter: null },
   };
 
   async function refreshCounts() {
@@ -96,6 +105,7 @@ function createDispatcher(
       state.counts = {
         queue: await redis.llen(QUEUE),
         processing: await redis.llen(PROCESSING),
+        retrying: await redis.zcard(RETRY),
         deadletter: await redis.llen(DEADLETTER),
       };
     } catch (err) {
@@ -138,6 +148,7 @@ function createDispatcher(
   async function deadLetter(raw, entry, record = null) {
     await redis.rpush(DEADLETTER, JSON.stringify(entry));
     await redis.lrem(PROCESSING, -1, raw);
+    if (record) await redis.hdel(ATTEMPTS, record.jobId);
     state.lastErrorAt = now();
     state.inFlightJobId = null;
     await pushHistory(historyEntry(record, {
@@ -146,8 +157,38 @@ function createDispatcher(
     await refreshCounts();
   }
 
+  // Devolve ao fim da fila os reagendados que ja venceram. ZREM + RPUSH atomicos: o job
+  // nunca fica fora das duas estruturas (at-least-once).
+  async function promoteDueRetries() {
+    const due = await redis.zrangebyscore(RETRY, '-inf', now());
+    for (const raw of due) {
+      await execMulti(redis.multi().zrem(RETRY, raw).rpush(QUEUE, raw));
+    }
+    if (due.length) log('info', 'dispatch_retry_due', { count: due.length });
+  }
+
+  // Com reagendados pendentes, o BLMOVE nao pode dormir alem da proxima tentativa.
+  // Nunca 0: no Redis, timeout 0 bloqueia para sempre.
+  async function blockTimeoutSec() {
+    const [, score] = await redis.zrange(RETRY, 0, 0, 'WITHSCORES');
+    if (score === undefined) return config.dispatchBlockTimeoutSec;
+    const untilDue = (Number(score) - now()) / 1000;
+    return Math.max(0.01, Math.min(config.dispatchBlockTimeoutSec, untilDue));
+  }
+
+  async function reschedule(raw, record, attempt, httpStatus) {
+    const delay = Math.min(config.dispatchBackoffBaseMs * 2 ** (attempt - 1), config.dispatchBackoffMaxMs);
+    const nextAttemptAt = now() + delay;
+    await execMulti(redis.multi().zadd(RETRY, nextAttemptAt, raw).lrem(PROCESSING, -1, raw));
+    state.lastErrorAt = now();
+    state.inFlightJobId = null;
+    await refreshCounts();
+    log('warn', 'dispatch_retry', { jobId: record.jobId, attempt, delay, nextAttemptAt, httpStatus });
+  }
+
   async function processOnce() {
-    const raw = await redis.blmove(QUEUE, PROCESSING, 'LEFT', 'RIGHT', config.dispatchBlockTimeoutSec);
+    await promoteDueRetries();
+    const raw = await redis.blmove(QUEUE, PROCESSING, 'LEFT', 'RIGHT', await blockTimeoutSec());
     state.lastPollAt = now();
     // null = fila vazia (timeout do BLMOVE). Uma string vazia E um item: precisa sair de
     // processing (senao vira zumbi recuperado para sempre no boot — F8 / NEU-82).
@@ -171,60 +212,58 @@ function createDispatcher(
       return true;
     }
 
-    let attempt = 0;
-    while (true) {
-      attempt += 1;
-      let res = null;
-      let threw = false;
-      try {
-        res = await postRace(fetchFn, config, body);
-      } catch {
-        threw = true;
-      }
+    // Uma tentativa por vez; o contador sobrevive aos reagendamentos (e a restart).
+    const attempt = await redis.hincrby(ATTEMPTS, record.jobId, 1);
+    let res = null;
+    let threw = false;
+    try {
+      res = await postRace(fetchFn, config, body);
+    } catch {
+      threw = true;
+    }
 
-      if (!threw) {
-        const cls = classifyStatus(res.status);
-        if (cls === 'success') {
-          const result = await safeJson(res);
-          await redis.lrem(PROCESSING, -1, raw);
-          state.lastSuccessAt = now();
-          state.inFlightJobId = null;
-          await pushHistory(historyEntry(record, {
-            status: 'sent', result: result?.status ?? null, httpStatus: res.status, attempts: attempt,
-          }));
-          await refreshCounts();
-          log('info', 'dispatch_success', {
-            jobId: record.jobId, playerId: record.playerId,
-            httpStatus: res.status, result: result?.status ?? null, attempt,
-          });
-          return true;
-        }
-        if (cls === 'permanent') {
-          const errBody = await safeJson(res);
-          await deadLetter(raw, deadLetterEntry({
-            raw, record, reason: 'permanent', httpStatus: res.status,
-            errorCode: errBody?.error ?? null, attempts: attempt, now,
-          }), record);
-          log('error', res.status === 401 ? 'dispatch_auth_failed' : 'dispatch_dead_letter', {
-            jobId: record.jobId, httpStatus: res.status, errorCode: errBody?.error ?? null,
-          });
-          return true;
-        }
-      }
-
-      // transitorio (429/5xx/rede/timeout)
-      if (attempt >= config.dispatchMaxAttempts) {
-        await deadLetter(raw, deadLetterEntry({
-          raw, record, reason: 'exhausted', httpStatus: threw ? null : res.status,
-          attempts: attempt, now,
-        }), record);
-        log('error', 'dispatch_dead_letter', { jobId: record.jobId, reason: 'exhausted', attempts: attempt });
+    if (!threw) {
+      const cls = classifyStatus(res.status);
+      if (cls === 'success') {
+        const result = await safeJson(res);
+        await redis.lrem(PROCESSING, -1, raw);
+        await redis.hdel(ATTEMPTS, record.jobId);
+        state.lastSuccessAt = now();
+        state.inFlightJobId = null;
+        await pushHistory(historyEntry(record, {
+          status: 'sent', result: result?.status ?? null, httpStatus: res.status, attempts: attempt,
+        }));
+        await refreshCounts();
+        log('info', 'dispatch_success', {
+          jobId: record.jobId, playerId: record.playerId,
+          httpStatus: res.status, result: result?.status ?? null, attempt,
+        });
         return true;
       }
-      const delay = Math.min(config.dispatchBackoffBaseMs * 2 ** (attempt - 1), config.dispatchBackoffMaxMs);
-      log('warn', 'dispatch_retry', { jobId: record.jobId, attempt, delay, httpStatus: threw ? null : res.status });
-      await sleepFn(delay);
+      if (cls === 'permanent') {
+        const errBody = await safeJson(res);
+        await deadLetter(raw, deadLetterEntry({
+          raw, record, reason: 'permanent', httpStatus: res.status,
+          errorCode: errBody?.error ?? null, attempts: attempt, now,
+        }), record);
+        log('error', res.status === 401 ? 'dispatch_auth_failed' : 'dispatch_dead_letter', {
+          jobId: record.jobId, httpStatus: res.status, errorCode: errBody?.error ?? null,
+        });
+        return true;
+      }
     }
+
+    // transitorio (429/5xx/rede/timeout)
+    const httpStatus = threw ? null : res.status;
+    if (attempt >= config.dispatchMaxAttempts) {
+      await deadLetter(raw, deadLetterEntry({
+        raw, record, reason: 'exhausted', httpStatus, attempts: attempt, now,
+      }), record);
+      log('error', 'dispatch_dead_letter', { jobId: record.jobId, reason: 'exhausted', attempts: attempt });
+      return true;
+    }
+    await reschedule(raw, record, attempt, httpStatus);
+    return true;
   }
 
   async function start() {
