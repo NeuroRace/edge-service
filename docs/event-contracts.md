@@ -10,7 +10,7 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
 - Porta padrao: `3000`
 - Health check HTTP: `GET /health`
 - Tela de operacao: `GET /` (+ `/ops.js`, `/ops_state.js`, `/ops.css`; allowlist, CSP `default-src 'self'`) — NEU-68
-- Health payload atual: `status`, `service`, `uptimeSeconds`, `connections`, `validatedEvents`, `rejectedEvents`, `discardedRaces`, `lastDiscardedAt`, `dispatcher` (`{enabled:false, reason}` ou `{enabled, target, lastPollAt, lastSuccessAt, lastErrorAt, inFlightJobId, counts:{queue,processing,deadletter}}`). `status` e sempre `ok` (D11/NEU-69: o estado do dispatcher informa, nunca derruba o broker)
+- Health payload atual: `status`, `service`, `uptimeSeconds`, `connections`, `validatedEvents`, `rejectedEvents`, `discardedRaces`, `lastDiscardedAt`, `dispatcher` (`{enabled:false, reason}` ou `{enabled, target, lastPollAt, lastSuccessAt, lastErrorAt, inFlightJobId, counts:{queue,processing,retrying,deadletter}}`). `status` e sempre `ok` (D11/NEU-69: o estado do dispatcher informa, nunca derruba o broker)
 - Historico do dispatcher: `GET /api/dispatch/history` -> ultimas 20 corridas (`jobId`, `playerId`, `email` mascarado, `status` `sent|deadletter`, `result`, `httpStatus`, `reason`, `attempts`, `at`), mais recente primeiro (`dispatch:history` no Redis)
 - Eventos repassados sem alteracao: `blink`, `eSense`, `handGesture`, `raceStarted`, `hasFinished`, `gameEvent`
 - Eventos validados no broker nesta fase: `eSense`, `handGesture`

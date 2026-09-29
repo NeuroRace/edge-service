@@ -63,7 +63,8 @@ O broker serve em `GET /` (ex.: `http://localhost:3000/`) a tela do operador do 
   docker compose exec -T redis redis-cli RPUSH dispatch:queue "$(cat /tmp/raw.json)"   # o dispatcher reenvia (idempotente na nuvem)
   docker compose exec redis redis-cli LPOP dispatch:deadletter                # so depois de confirmar dispatch_success
   ```
-- `GET /health` expoe `dispatcher` (ligado/desligado + motivo, alvo, ultimo poll, contadores da fila) e `discardedRaces` (corridas de jogador sem e-mail registrado — NEU-73). O `status` e sempre `ok`: o dispatcher morto nao derruba o broadcast.
+- **Falha temporaria nao segura a fila (NEU-92):** `429`, `5xx`, timeout ou rede fora tiram a corrida de `dispatch:processing` e a reagendam em `dispatch:retry` (sorted set; score = hora da proxima tentativa, com backoff `DISPATCH_BACKOFF_BASE_MS` -> `DISPATCH_BACKOFF_MAX_MS`). O dispatcher segue para a proxima corrida; quando a hora chega, a reagendada volta para o fim de `dispatch:queue`. As tentativas de cada corrida ficam em `dispatch:attempts` (hash por `jobId`); em `DISPATCH_MAX_ATTEMPTS` ela vai para o dead-letter como `exhausted`. Nao precisa de acao manual: `docker compose exec redis redis-cli ZRANGE dispatch:retry 0 -1 WITHSCORES` so para inspecionar.
+- `GET /health` expoe `dispatcher` (ligado/desligado + motivo, alvo, ultimo poll, contadores `queue`/`processing`/`retrying`/`deadletter`) e `discardedRaces` (corridas de jogador sem e-mail registrado — NEU-73). O `status` e sempre `ok`: o dispatcher morto nao derruba o broadcast.
 - `GET /api/dispatch/history` lista as ultimas 20 corridas enviadas/rejeitadas (e-mail mascarado).
 - `GET /api/session/current` inclui `player1IsBot`/`player2IsBot`, `startedAt` e, quando ha jogadores registrados para a proxima corrida, `pending`.
 
