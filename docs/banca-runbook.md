@@ -38,6 +38,8 @@ Abra **http://localhost:3000/** no navegador do kiosk (essa é a tela do operado
 | **Nuvem DESLIGADA — EDGE_INGEST_TOKEN vazio** | Idem, preencha o token no `.env`. |
 | **N corrida(s) na fila há mais de 30 s** | Internet caiu ou lenta. Nada se perde: continue as corridas; elas sobem sozinhas quando a rede voltar. O ranking no telão atualiza depois. |
 | **Leitor do jogador N sem sinal** | Com simulador: `docker compose --profile banca restart simulator-a` (ou `-b`). Com NeuroSky: verifique o par/USB; o acquisition reconecta sozinho. |
+| **Jogador N registrado, mas o leitor está sem sinal** | Não dê a largada: sem EEG a corrida será descartada. Resolva o sinal como na linha acima e espere a bolinha ficar verde. |
+| **Uma corrida foi descartada porque o leitor ficou sem sinal de EEG** | O fone caiu, ficou sem bateria ou largou sem sinal (NEU-104). Nada foi para a nuvem: arrume o sinal, registre o e-mail de novo e peça para a pessoa correr outra vez. |
 | **Falhou: exhausted** no histórico | A nuvem ficou fora por mais de ~2 min naquela corrida. Recupere: `README.md` → "Dead-letter, historico e requeue" (o registro fica guardado no dead-letter). |
 | **Sem conexão em tempo real com o broker** | Recarregue a página; se persistir, `docker compose --profile banca logs broker --tail 50`. |
 

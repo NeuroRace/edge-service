@@ -148,7 +148,7 @@ curl -s localhost:3000/health                                # status ok
 | 4 | PC-JOGO | jogador cruza a linha | cartão **Finalizada** |
 | 5 | Painel | repete com outra dupla | nada trava entre corridas |
 
-- **Regra de ouro:** registrar os e-mails **antes** da largada, e **só largar com o jogador 1 verde**. O broker aceita corrida sem nenhum pacote de EEG (`packets: []`, visto em 25/09). Com a nuvem ligada, ela vira resultado no ranking sem dado nenhum.
+- **Regra de ouro:** registrar os e-mails **antes** da largada, e **só largar com o jogador 1 verde**. Corrida humana sem nenhum pacote de EEG é descartada pelo broker (NEU-104): não vai para a nuvem, conta em "descartadas" e o painel mostra o banner **"Uma corrida foi descartada porque o leitor ficou sem sinal de EEG"**. A pessoa precisa correr de novo. Com e-mail registrado e leitor sem sinal, o painel avisa antes da largada (**"Jogador N registrado, mas o leitor está sem sinal"**).
 - **Sintoma do ensaio:** o painel foi para "Correndo", mas o carro não andou e não havia sinal. Causa: aquisição parada ou sem enviar (seção 6).
 - Com o dispatcher desligado, a corrida fica na fila local (`docker compose exec redis redis-cli LLEN dispatch:queue`) e **o ranking do site não muda**. Isso é o esperado no ensaio.
 
