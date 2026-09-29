@@ -36,7 +36,7 @@ Abra **http://localhost:3000/** no navegador do kiosk (essa é a tela do operado
 | **Corrida iniciada sem jogadores registrados — NÃO será salva** | Deixe terminar; registre os e-mails e rode outra corrida. |
 | **Nuvem DESLIGADA — API_URL não definido** | O `.env` da raiz não foi lido. `docker compose --profile banca down && docker compose --profile banca up -d`. Confira `docker compose config \| grep API_URL`. As corridas já feitas estão na fila e sobem quando religar. |
 | **Nuvem DESLIGADA — EDGE_INGEST_TOKEN vazio** | Idem, preencha o token no `.env`. |
-| **N corrida(s) na fila há mais de 30 s** | Internet caiu ou lenta. Nada se perde: continue as corridas; elas sobem sozinhas quando a rede voltar. O ranking no telão atualiza depois. |
+| **N corrida(s) aguardando envio há mais de 30 s** | Internet caiu ou lenta. Nada se perde: continue as corridas; elas sobem sozinhas quando a rede voltar. Uma corrida com problema não trava as outras: ela fica em "nova tentativa" e as seguintes continuam sendo enviadas (NEU-92). O ranking no telão atualiza depois. |
 | **Leitor do jogador N sem sinal** | Com simulador: `docker compose --profile banca restart simulator-a` (ou `-b`). Com NeuroSky: verifique o par/USB; o acquisition reconecta sozinho. |
 | **Jogador N registrado, mas o leitor está sem sinal** | Não dê a largada: sem EEG a corrida será descartada. Resolva o sinal como na linha acima e espere a bolinha ficar verde. |
 | **Uma corrida foi descartada porque o leitor ficou sem sinal de EEG** | O fone caiu, ficou sem bateria ou largou sem sinal (NEU-104). Nada foi para a nuvem: arrume o sinal, registre o e-mail de novo e peça para a pessoa correr outra vez. |
@@ -48,7 +48,7 @@ Tudo que é local funciona (jogo, sinal, tela do operador, registro). As corrida
 
 ## 5. Encerrar / reiniciar
 - Pausar sem perder nada: `docker compose --profile banca down` (o volume do Redis fica).
-- Ver filas: `docker compose exec redis redis-cli LLEN dispatch:queue` (deve ser 0 ao fim do dia).
+- Ver filas: `docker compose exec redis redis-cli LLEN dispatch:queue` e `docker compose exec redis redis-cli ZCARD dispatch:retry` (os dois devem ser 0 ao fim do dia).
 - Zerar tudo (só se tiver certeza de que nada ficou na fila): `docker compose --profile banca down -v`.
 
 ## 6. Checklist de 1 minuto antes da banca
