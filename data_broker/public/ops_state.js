@@ -66,7 +66,10 @@
       out.push({ level: 'error', code: 'race_without_players', text: 'Corrida iniciada sem jogadores registrados — NÃO será salva. Registre os e-mails antes da largada.' });
     }
     if (health && Number(health.discardedRaces) > Number(prevDiscarded || 0)) {
-      out.push({ level: 'error', code: 'race_discarded', text: 'Uma corrida foi descartada por falta de e-mail registrado. Ela não foi para a nuvem.' });
+      const text = health.lastDiscardReason === 'no_eeg_signal'
+        ? 'Uma corrida foi descartada porque o leitor ficou sem sinal de EEG (fone desconectado ou sem contato). Ela não foi para a nuvem — peça para a pessoa correr de novo.'
+        : 'Uma corrida foi descartada por falta de e-mail registrado. Ela não foi para a nuvem.';
+      out.push({ level: 'error', code: 'race_discarded', text });
     }
     if (!disp.enabled) {
       const why = disp.reason === 'api_url_missing' ? 'API_URL não definido (.env da raiz)'
@@ -77,11 +80,23 @@
     if (Number(counts.queue) > 0 && queueSince != null && now - queueSince > QUEUE_STUCK_MS) {
       out.push({ level: 'warn', code: 'queue_stuck', text: `${counts.queue} corrida(s) na fila há mais de 30 s — internet ou nuvem lenta. Nada se perde; elas sobem quando voltar.` });
     }
+    // NEU-104: jogador com e-mail registrado para a proxima corrida e leitor sem sinal —
+    // se largar assim, a corrida dele sera descartada. Erro (nao aviso) e substitui o
+    // signal_lost daquele jogador para nao repetir o banner.
+    const pending = session && session.pending;
+    const blocked = {};
+    for (const slot of [1, 2]) {
+      const sig = signals && signals[slot];
+      if (pending && pending[`player${slot}Email`] && sig && sig.link === 'lost') {
+        blocked[slot] = true;
+        out.push({ level: 'error', code: 'registered_without_signal', text: `Jogador ${slot} registrado, mas o leitor está sem sinal — não dê a largada: sem EEG a corrida será descartada.` });
+      }
+    }
     // Leitor sem pacotes ha >10 s: alerta sempre que ja houve sinal daquele jogador
     // (signals[slot] presente). Sem sinal nunca visto = tela recem-aberta, nao alerta.
     for (const slot of [1, 2]) {
       const sig = signals && signals[slot];
-      if (sig && sig.link === 'lost') {
+      if (sig && sig.link === 'lost' && !blocked[slot]) {
         out.push({ level: 'warn', code: 'signal_lost', text: `Leitor do jogador ${slot} sem sinal há mais de 10 s.` });
       }
     }

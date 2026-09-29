@@ -5,6 +5,8 @@ function createRuntimeState(startedAt = Date.now(), now = Date.now) {
   // NEU-73: corridas consolidadas e descartadas por falta de e-mail registrado.
   let discardedRaces = 0;
   let lastDiscardedAt = null;
+  // NEU-104: 'no_email_registered' (NEU-73) ou 'no_eeg_signal' — a tela escolhe o texto.
+  let lastDiscardReason = null;
   // D11 / NEU-69: o dispatcher informa seu estado via funcao (nunca muda `status`).
   let dispatcherState = () => ({ enabled: false });
 
@@ -21,9 +23,10 @@ function createRuntimeState(startedAt = Date.now(), now = Date.now) {
     markEventRejected() {
       rejectedEvents += 1;
     },
-    markRaceDiscarded() {
+    markRaceDiscarded(reason = null) {
       discardedRaces += 1;
       lastDiscardedAt = now();
+      lastDiscardReason = reason;
     },
     setDispatcherState(fn) {
       dispatcherState = typeof fn === 'function' ? fn : () => fn;
@@ -40,6 +43,7 @@ function createRuntimeState(startedAt = Date.now(), now = Date.now) {
         rejectedEvents,
         discardedRaces,
         lastDiscardedAt,
+        lastDiscardReason,
         dispatcher,
       };
     },

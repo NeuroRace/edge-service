@@ -27,9 +27,12 @@ async function execMulti(multi) {
   return results;
 }
 
-// `hooks.onDiscarded()` (opcional) e chamado quando uma corrida consolidada e descartada
-// por ser de jogador sem e-mail registrado (NEU-73): alimenta o contador do /health.
+// `hooks.onDiscarded({ playerId, sessionId, reason })` (opcional) e chamado quando uma
+// corrida consolidada e descartada: jogador sem e-mail registrado (NEU-73,
+// `no_email_registered`) ou humano sem EEG (NEU-104, `no_eeg_signal`). Alimenta o /health.
 function createSessionManager(redis, config, log, hooks = {}) {
+  const minEegPackets = Number(config?.minEegPackets) || 1;
+
   // Identificacao por UUID Supabase ainda nao implementada (Stage 3 / NEU-37).
   // Ate la, todo e-mail e registrado sem validacao remota (`validated: false`).
   async function validateEmailRemote(email) {
@@ -154,7 +157,9 @@ function createSessionManager(redis, config, log, hooks = {}) {
       log('warn', 'has_finished_discarded_bot', {
         playerId, sessionId: session.id, reason: 'no_email_registered',
       });
-      if (typeof hooks.onDiscarded === 'function') hooks.onDiscarded({ playerId, sessionId: session.id });
+      if (typeof hooks.onDiscarded === 'function') {
+        hooks.onDiscarded({ playerId, sessionId: session.id, reason: 'no_email_registered' });
+      }
       return;
     }
 
@@ -191,6 +196,21 @@ function createSessionManager(redis, config, log, hooks = {}) {
           corrupt,
           kept: packets.length,
         });
+      }
+
+      // NEU-104: fone desconectado/sem contato gera zero eSense, mas o jogo ainda manda
+      // hasFinished — o tempo entraria no ranking como corrida valida. Descarta sem ir
+      // para a fila, de forma barulhenta (log + /health + tela). O claim fica gravado:
+      // um hasFinished duplicado nao dispara um segundo descarte.
+      if (packets.length < minEegPackets) {
+        await redis.del(packetsKey);
+        log('warn', 'has_finished_discarded_no_eeg', {
+          playerId, sessionId: session.id, reason: 'no_eeg_signal', packets: packets.length, minPackets: minEegPackets,
+        });
+        if (typeof hooks.onDiscarded === 'function') {
+          hooks.onDiscarded({ playerId, sessionId: session.id, reason: 'no_eeg_signal' });
+        }
+        return;
       }
 
       const record = {
