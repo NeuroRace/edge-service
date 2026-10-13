@@ -19,6 +19,8 @@ Stack principal com Docker Compose:
 docker compose up broker acquisition-a acquisition-b simulator-b test-client
 ```
 
+Rede do evento (NEU-138): toda porta do `docker-compose.yml` abre só no próprio PC (`127.0.0.1` e `::1`). O Docker Desktop libera as portas publicadas no firewall do Windows, até na rede pública, então publicar sem IP expõe painel e Redis a quem estiver no Wi-Fi. No PC central do estande, some `-f docker-compose.central.yml` para abrir o broker também no cabo do coletor (`CENTRAL_IP`, padrão `192.168.50.1`). Validação: `scripts/validate-compose-ports.sh`.
+
 Perfis disponiveis em `docker-compose.yml`:
 - `sim-local`
 - `sim-dual`
