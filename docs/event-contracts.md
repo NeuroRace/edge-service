@@ -16,7 +16,7 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
 - Eventos repassados sem alteracao: `blink`, `eSense`, `handGesture`, `raceStarted`, `hasFinished`, `gameEvent`
 - Eventos validados no broker nesta fase: `eSense`, `handGesture`
 - Ultimos jogadores (NEU-141): `GET /api/players/recent` -> `[{ contact, lastAt }]` (contato completo; so cadastrados entram, no registro); `POST /api/players/recent/clear` -> `200 {ok:true}` · `415` sem JSON
-- Presenca das pecas (NEU-139): `GET /api/status` -> `now` (relogio do broker), `pieces` (`acquisition-p1`, `gesture-p1`, `acquisition-p2`, `gesture-p2`, cada uma com `connected`, `lastEventAt`, `attention`, `poorSignalLevel`, `source`, `handSeen`), `game` (`connections`, `lastGameEvent`), `redis.status`
+- Presenca das pecas (NEU-139): `GET /api/status` -> `now` (relogio do broker), `pieces` (`acquisition-p1`, `gesture-p1`, `acquisition-p2`, `gesture-p2`, cada uma com `connected`, `lastEventAt`, `attention`, `poorSignalLevel`, `source`, `handSeen`), `game` (`connections`, `lastGameEvent`), `redis.status`; NEU-142: + `connections` (sockets abertos por papel), `game.recentEvents` (ultimos 5), `pieces[].meta` e `broker` (`version`, `uptimeSeconds`)
 
 ## Identificacao das pecas (NEU-139)
 
@@ -24,12 +24,13 @@ Cada cliente nosso se apresenta no connect do Socket.IO com `auth`. O broker usa
 
 | Cliente | `auth` |
 | -- | -- |
-| `eeg_acquisition` | `{ role: 'acquisition', player: 1\|2 }` |
-| `gesture_detector` | `{ role: 'gesture', player: 1\|2 }` |
+| `eeg_acquisition` | `{ role: 'acquisition', player: 1\|2, version, source, eegHost, acqPort }` |
+| `gesture_detector` | `{ role: 'gesture', player: 1\|2, version, commit, branch, camera }` |
 | painel (`public/ops.js`) | `{ role: 'panel' }` |
 | `test_client` | `{ role: 'test-client' }` |
 | jogo (Unreal), `e2e/jogo-falso.js` | nenhum |
 
+- NEU-142: `version` = hash curto (7 hex) do codigo da peca (SHA-256 dos arquivos ordenados, CRLF->LF; `code_version.js`/`code_version.py`). O broker so guarda os metadados `version`, `source`, `eegHost`, `acqPort`, `commit`, `branch`, `camera` (string cortada em 64, numero so se finito). Versoes diferentes entre `acquisition-p1`/`-p2` ou `gesture-p1`/`-p2` viram aviso no painel.
 - `auth` ausente ou invalido nao derruba a conexao: o socket vira "nao identificado", e **conexao nao identificada conta como o jogo** (fallback ate a NEU-146).
 - Evento `gestureStatus` (`gesture_detector`, a cada 2 s): `{ "player": 1, "handSeen": true, "timeStamp": 1760000000000 }`. Validado no broker (`handSeen` booleano) e **nunca repassado**: so atualiza a presenca.
 
