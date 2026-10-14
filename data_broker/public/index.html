@@ -80,8 +80,21 @@
       </div>
     </section>
 
+    <section class="block" data-block="recent" aria-labelledby="h-recent">
+      <h2 id="h-recent"><span class="eyebrow">3</span> Últimos jogadores</h2>
+      <div class="recent-row">
+        <input class="recent-search" data-recent-search type="search" autocomplete="off" spellcheck="false" placeholder="Buscar por parte do e-mail" aria-label="Buscar nos últimos jogadores">
+        <span class="hint mono" data-recent-hint aria-live="polite"></span>
+        <button type="button" class="btn-small" data-recent-clear>Limpar lista</button>
+      </div>
+      <table class="history" aria-label="Últimos jogadores cadastrados">
+        <thead><tr><th>Contato</th><th>Último registro</th><th>Preencher</th></tr></thead>
+        <tbody data-recent-list><tr class="empty"><td colspan="3">Ninguém cadastrado ainda.</td></tr></tbody>
+      </table>
+    </section>
+
     <section class="block" data-block="cloud" aria-labelledby="h-cloud">
-      <h2 id="h-cloud"><span class="eyebrow">3</span> Nuvem</h2>
+      <h2 id="h-cloud"><span class="eyebrow">4</span> Nuvem</h2>
       <div class="cloud-row">
         <span class="chip mono" data-cloud-chip>Nuvem: —</span>
         <span class="counts mono" data-counts>fila — · enviando — · falhas —</span>

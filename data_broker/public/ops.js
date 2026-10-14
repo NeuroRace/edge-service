@@ -15,6 +15,7 @@
     waitingSince: null,                     // desde quando ha corrida esperando envio
     pslSeries: { 1: [], 2: [] },            // [{ t, a }] Poor Signal escalado 0..100
     fists: { 1: [], 2: [] },                // horarios dos punhos (ultimo minuto)
+    recent: [],                             // NEU-141: /api/players/recent
     raceEvents: { 1: false, 2: false },
     packets: { 1: null, 2: null },          // { at, psl, attention }
     series: { 1: [], 2: [] },               // [{ t, a }]
@@ -30,7 +31,7 @@
     return res.json();
   }
   async function refresh() {
-    const [health, session, history, overview, status] = await Promise.allSettled([getJson('/health'), getJson('/api/session/current'), getJson('/api/dispatch/history'), getJson('/api/dispatch/overview'), getJson('/api/status')]);
+    const [health, session, history, overview, status, recent] = await Promise.allSettled([getJson('/health'), getJson('/api/session/current'), getJson('/api/dispatch/history'), getJson('/api/dispatch/overview'), getJson('/api/status'), getJson('/api/players/recent')]);
     if (health.status === 'fulfilled') {
       st.health = health.value;
       if (st.prevDiscarded === null) st.prevDiscarded = Number(st.health.discardedRaces || 0);
@@ -42,6 +43,7 @@
     if (history.status === 'fulfilled') st.history = history.value;
     st.overview = overview.status === 'fulfilled' ? overview.value : null;
     st.status = status.status === 'fulfilled' ? status.value : null;
+    if (recent.status === 'fulfilled') st.recent = recent.value;
     const waiting = Number(st.overview && st.overview.counts && st.overview.counts.waiting) || 0;
     if (waiting > 0 && st.waitingSince === null) st.waitingSince = Date.now();
     if (waiting === 0) st.waitingSince = null;
@@ -277,7 +279,66 @@
     const ul = $('#banner-list'); ul.replaceChildren();
     for (const a of list) { const li = document.createElement('li'); li.dataset.level = a.level; li.dataset.code = a.code; li.textContent = a.text; ul.appendChild(li); }
   }
-  function render() { renderStrip(); renderCards(); renderSignal(1); renderSignal(2); renderCloud(); renderBanner(); }
+  // NEU-141: ultimos jogadores. Contato completo (o painel so abre no PC central, spec D5).
+  // Durante a corrida o campo do jogador fica travado (mostra quem esta na pista); os
+  // botoes P1/P2 so voltam quando a corrida terminar ("Proximo P1/P2" chega com a NEU-140).
+  let recentKey = null;
+  function renderRecent() {
+    const tbody = $('[data-recent-list]');
+    const rows = S.filterRecentPlayers(st.recent, $('[data-recent-search]').value);
+    const locked = { 1: $('#email1').readOnly, 2: $('#email2').readOnly };
+    // So refaz a tabela quando algo mudou: refazer a cada refresh (2 s) troca o botao no meio
+    // do clique e o clique do operador se perde.
+    const key = JSON.stringify([rows, locked, (st.recent || []).length]);
+    if (key === recentKey) return;
+    recentKey = key;
+    tbody.replaceChildren();
+    if (rows.length === 0) {
+      const tr = document.createElement('tr'); tr.className = 'empty';
+      const td = document.createElement('td'); td.colSpan = 3;
+      td.textContent = (st.recent || []).length ? 'Nenhum contato com essa busca.' : 'Ninguém cadastrado ainda.';
+      tr.appendChild(td); tbody.appendChild(tr); return;
+    }
+    for (const p of rows) {
+      const tr = document.createElement('tr');
+      const contact = document.createElement('td'); contact.className = 'mono'; contact.textContent = String(p.contact); tr.appendChild(contact);
+      const when = document.createElement('td'); when.className = 'mono';
+      when.textContent = p.lastAt ? new Date(Number(p.lastAt)).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+      tr.appendChild(when);
+      const actions = document.createElement('td');
+      for (const slot of [1, 2]) {
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'btn-small'; btn.textContent = `P${slot}`;
+        btn.dataset.fillSlot = String(slot); btn.dataset.contact = String(p.contact);
+        btn.disabled = locked[slot];
+        btn.title = locked[slot] ? 'Disponível quando a corrida terminar' : `Preencher o Jogador ${slot}`;
+        actions.appendChild(btn);
+      }
+      tr.appendChild(actions);
+      tbody.appendChild(tr);
+    }
+  }
+  $('[data-recent-search]').addEventListener('input', renderRecent);
+  $('[data-recent-list]').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-fill-slot]');
+    if (!btn || btn.disabled) return;
+    const slot = btn.dataset.fillSlot; const input = $(`#email${slot}`);
+    input.value = btn.dataset.contact;
+    input.removeAttribute('aria-invalid'); const err = $(`[data-error="${slot}"]`); err.hidden = true; err.textContent = '';
+    $('[data-recent-hint]').textContent = `Jogador ${slot}: ${btn.dataset.contact}. Confira e registre.`;
+    input.focus();
+  });
+  $('[data-recent-clear]').addEventListener('click', async () => {
+    if (!window.confirm('Apagar a lista de últimos jogadores deste PC? Não dá para desfazer.')) return;
+    try {
+      const res = await fetch('/api/players/recent/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      $('[data-recent-hint]').textContent = res.ok ? 'Lista apagada.' : `Falha ao apagar (${res.status}).`;
+    } catch (e) {
+      $('[data-recent-hint]').textContent = 'Sem resposta do broker. Ele está de pé?';
+    }
+    await refresh();
+  });
+  function render() { renderStrip(); renderCards(); renderSignal(1); renderSignal(2); renderRecent(); renderCloud(); renderBanner(); }
 
   setInterval(() => { renderStrip(); renderSignal(1); renderSignal(2); renderBanner(); }, 1000);
   setInterval(refresh, 2000);

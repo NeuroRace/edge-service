@@ -90,5 +90,11 @@ input[aria-invalid="true"] { border-color: var(--error); }
 .psl-num[data-level="bad"], .attn-num[data-level="bad"] { color: var(--error); font-size: 1rem; }
 .spark-psl path { stroke: var(--warn); }
 .gesture { height: 24px; } .gesture rect { fill: var(--fg-strong); }
+/* Ultimos jogadores (NEU-141) */
+.recent-row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.recent-search { flex: 1 1 260px; font: inherit; font-family: var(--mono); padding: 0.45rem 0.7rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg-strong); }
+.recent-search:focus-visible { outline: 2px solid var(--fg-strong); outline-offset: 2px; }
+[data-recent-list] td .btn-small + .btn-small { margin-left: 0.4rem; }
+.btn-small[disabled] { cursor: not-allowed; }
 @media (max-width: 720px) { .cards, .signals { grid-template-columns: 1fr; } .signal-body { grid-template-columns: 90px 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

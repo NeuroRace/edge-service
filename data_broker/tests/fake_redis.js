@@ -105,6 +105,28 @@ class FakeRedis extends EventEmitter {
     return slice.map(([m]) => m);
   }
 
+  // ZREVRANGE key start stop [WITHSCORES]: maior score primeiro (NEU-141).
+  async zrevrange(key, start, stop, withScores) {
+    const all = this._sorted(key).reverse();
+    const e = stop < 0 ? all.length + stop : stop;
+    const slice = all.slice(start, e + 1);
+    if (withScores === 'WITHSCORES') return slice.flatMap(([m, sc]) => [m, String(sc)]);
+    return slice.map(([m]) => m);
+  }
+
+  // ZREMRANGEBYRANK key start stop (rank crescente por score; negativos contam do fim).
+  async zremrangebyrank(key, start, stop) {
+    const all = this._sorted(key);
+    const len = all.length;
+    const s = start < 0 ? Math.max(0, len + start) : start;
+    const e = Math.min(stop < 0 ? len + stop : stop, len - 1);
+    // Como no Redis: stop que cai antes do inicio = intervalo vazio (o slice do JS contaria do fim).
+    if (e < s) return 0;
+    let removed = 0;
+    for (const [m] of all.slice(s, e + 1)) { await this.zrem(key, m); removed += 1; }
+    return removed;
+  }
+
   async rpush(key, ...values) {
     if (!this.lists.has(key)) this.lists.set(key, []);
     const list = this.lists.get(key);
@@ -204,7 +226,7 @@ class FakeRedis extends EventEmitter {
   multi() {
     const ops = [];
     const proxy = {};
-    const methods = ['hset', 'del', 'rpush', 'expire', 'hsetnx', 'hdel', 'lrange', 'lpush', 'ltrim', 'lrem', 'zadd', 'zrem'];
+    const methods = ['hset', 'del', 'rpush', 'expire', 'hsetnx', 'hdel', 'lrange', 'lpush', 'ltrim', 'lrem', 'zadd', 'zrem', 'zremrangebyrank'];
     for (const m of methods) {
       proxy[m] = (...args) => {
         ops.push([m, args]);
