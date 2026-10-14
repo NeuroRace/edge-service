@@ -40,6 +40,14 @@ test('test_OpsScreenServed_root_returns_html_with_strict_csp_and_three_blocks', 
     assert.match(res.body, /data-tab="ops"/); assert.match(res.body, /data-tab="diag"/);
     assert.match(res.body, /data-panel="diag"/);
     for (const k of ['broker', 'redis', 'acquisition-p1', 'gesture-p1', 'jogo', 'acquisition-p2', 'gesture-p2']) assert.match(res.body, new RegExp(`data-diag="${k}"`));
+    // NEU-86: fonte NeuroSky | Bot e camera em cada card.
+    for (const slot of [1, 2]) {
+      assert.match(res.body, new RegExp(`data-source-btn="${slot}" data-source="neurosky"`));
+      assert.match(res.body, new RegExp(`data-source-btn="${slot}" data-source="bot"`));
+      assert.match(res.body, new RegExp(`data-camera="${slot}"`));
+      assert.match(res.body, new RegExp(`data-setup-msg="${slot}"`));
+    }
+    assert.match(res.body, /<option value="2">Câmera 3<\/option>/);
   } finally { server.close(); }
 });
 
