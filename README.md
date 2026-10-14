@@ -56,7 +56,8 @@ O broker serve em `GET /` (ex.: `http://localhost:3000/`) a tela do operador do 
 
 ## Dead-letter, historico e requeue (operacao)
 
-- `dispatch:deadletter` guarda cada corrida rejeitada com o registro original em `raw` (campo obrigatorio em todos os motivos: `exhausted`, `permanent`, `mapping_failed`, `malformed_record`). **Requeue manual** = devolver o `raw` a fila:
+- **Pelo painel (NEU-143):** o bloco Nuvem lista as corridas que nao subiram (quem, quando, por que) com o botao **Reenviar**, que devolve a corrida ao fim da fila. Nao ha apagar nem limpar fila.
+- `dispatch:deadletter` guarda cada corrida rejeitada com o registro original em `raw` (campo obrigatorio em todos os motivos: `exhausted`, `permanent`, `mapping_failed`, `malformed_record`). **Requeue manual** (sem o painel) = devolver o `raw` a fila:
   ```bash
   docker compose exec redis redis-cli LINDEX dispatch:deadletter 0            # inspeciona
   docker compose exec redis sh -c 'redis-cli LINDEX dispatch:deadletter 0' | python3 -c 'import json,sys; print(json.load(sys.stdin)["raw"])' > /tmp/raw.json
@@ -65,6 +66,8 @@ O broker serve em `GET /` (ex.: `http://localhost:3000/`) a tela do operador do 
   ```
 - `GET /health` expoe `dispatcher` (ligado/desligado + motivo, alvo, ultimo poll, contadores da fila) e `discardedRaces` (corridas de jogador sem e-mail registrado — NEU-73). O `status` e sempre `ok`: o dispatcher morto nao derruba o broadcast.
 - `GET /api/dispatch/history` lista as ultimas 20 corridas enviadas/rejeitadas (e-mail mascarado).
+- `GET /api/dispatch/overview` (NEU-143): contagens `waiting` (fila + `dispatch:retry`), `sending`, `failed`, `lastSentAt` e as ultimas 50 corridas da dead-letter (e-mail mascarado, sem o registro bruto, com `retryable`). Le o Redis direto: funciona com o dispatcher desligado.
+- `POST /api/dispatch/requeue` `{"jobId"}` (NEU-143): tira da dead-letter e poe no fim da fila (zera `dispatch:attempts`). `200`; `404` se ja nao esta la; `409` sem `raw`/registro corrompido; exige `Content-Type: application/json` (`415`), o que barra CSRF por formulario.
 - `GET /api/session/current` inclui `player1IsBot`/`player2IsBot`, `startedAt` e, quando ha jogadores registrados para a proxima corrida, `pending`.
 
 ## Variaveis operacionais do acquisition

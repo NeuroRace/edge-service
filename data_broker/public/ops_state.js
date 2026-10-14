@@ -57,8 +57,31 @@
 
   const QUEUE_STUCK_MS = 30000;
 
+  // NEU-143: motivo de uma corrida que nao subiu (entrada de /api/dispatch/overview).
+  function failureText(f) {
+    const e = f || {};
+    if (e.reason === 'exhausted') {
+      return `a nuvem não respondeu após ${e.attempts ?? '?'} tentativas (${e.httpStatus ? `último HTTP ${e.httpStatus}` : 'sem internet?'})`;
+    }
+    if (e.reason === 'permanent') {
+      if (Number(e.httpStatus) === 401) return 'a nuvem recusou a chave do estande (HTTP 401) · confira o EDGE_INGEST_TOKEN';
+      return `a nuvem recusou (HTTP ${e.httpStatus ?? '?'}${e.errorCode ? `: ${e.errorCode}` : ''})`;
+    }
+    if (e.reason === 'mapping_failed') return `erro ao montar o envio${e.error ? `: ${e.error}` : ''}`;
+    if (e.reason === 'malformed_record' || e.reason === 'malformed_entry') return 'registro corrompido, não dá para reenviar';
+    return e.reason || 'motivo desconhecido';
+  }
+
+  // Regra da bolinha "Nuvem" (NEU-139): pede atencao com corrida que falhou ou que espera
+  // ha mais de QUEUE_STUCK_MS. `waitingSince` = desde quando ha corrida esperando.
+  function cloudNeedsAttention({ overview, waitingSince, now }) {
+    const c = (overview && overview.counts) || {};
+    if (Number(c.failed) > 0) return true;
+    return Number(c.waiting) > 0 && waitingSince != null && now - waitingSince > QUEUE_STUCK_MS;
+  }
+
   // Um banner so quando ha problema. Ordem = gravidade para o operador.
-  function alerts({ session, health, signals, now, queueSince, prevDiscarded }) {
+  function alerts({ session, health, signals, now, queueSince, prevDiscarded, overview }) {
     const out = [];
     const disp = (health && health.dispatcher) || { enabled: false };
     const counts = disp.counts || {};
@@ -79,6 +102,10 @@
     }
     if (Number(counts.queue) > 0 && queueSince != null && now - queueSince > QUEUE_STUCK_MS) {
       out.push({ level: 'warn', code: 'queue_stuck', text: `${counts.queue} corrida(s) na fila há mais de 30 s — internet ou nuvem lenta. Nada se perde; elas sobem quando voltar.` });
+    }
+    const failed = Number(overview && overview.counts && overview.counts.failed) || 0;
+    if (failed > 0) {
+      out.push({ level: 'warn', code: 'cloud_failed', text: `${failed} corrida(s) não subiram para a nuvem. Veja "Não subiram" no bloco Nuvem e use Reenviar.` });
     }
     // NEU-104: jogador com e-mail registrado para a proxima corrida e leitor sem sinal —
     // se largar assim, a corrida dele sera descartada. Erro (nao aviso) e substitui o
@@ -103,5 +130,5 @@
     return out;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, QUEUE_STUCK_MS };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, QUEUE_STUCK_MS };
 }));

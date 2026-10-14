@@ -10,6 +10,7 @@
     session: { status: 'none', pending: null },
     health: null,
     history: [],
+    overview: null,                         // NEU-143: /api/dispatch/overview
     raceEvents: { 1: false, 2: false },
     packets: { 1: null, 2: null },          // { at, psl, attention }
     series: { 1: [], 2: [] },               // [{ t, a }]
@@ -25,7 +26,7 @@
     return res.json();
   }
   async function refresh() {
-    const [health, session, history] = await Promise.allSettled([getJson('/health'), getJson('/api/session/current'), getJson('/api/dispatch/history')]);
+    const [health, session, history, overview] = await Promise.allSettled([getJson('/health'), getJson('/api/session/current'), getJson('/api/dispatch/history'), getJson('/api/dispatch/overview')]);
     if (health.status === 'fulfilled') {
       st.health = health.value;
       if (st.prevDiscarded === null) st.prevDiscarded = Number(st.health.discardedRaces || 0);
@@ -35,6 +36,7 @@
     }
     if (session.status === 'fulfilled') st.session = session.value;
     if (history.status === 'fulfilled') st.history = history.value;
+    st.overview = overview.status === 'fulfilled' ? overview.value : null;
     render();
   }
 
@@ -135,8 +137,15 @@
     const d = h.dispatcher || { enabled: false };
     chip.dataset.on = String(!!d.enabled);
     chip.textContent = d.enabled ? `Nuvem: ligada → ${d.target || '?'}` : 'Nuvem: DESLIGADA';
-    const c = d.counts || {};
-    counts.textContent = `fila ${c.queue ?? '—'} · enviando ${c.processing ?? '—'} · falhas ${c.deadletter ?? '—'} · descartadas ${h.discardedRaces ?? 0}`;
+    const o = st.overview && st.overview.counts;
+    if (o) {
+      const last = st.overview.lastSentAt ? new Date(Number(st.overview.lastSentAt)).toLocaleTimeString('pt-BR') : '—';
+      counts.textContent = `esperando ${o.waiting} · enviando ${o.sending} · falharam ${o.failed} · último envio ok ${last} · descartadas ${h.discardedRaces ?? 0}`;
+    } else {
+      const c = d.counts || {};
+      counts.textContent = `fila ${c.queue ?? '—'} · enviando ${c.processing ?? '—'} · falhas ${c.deadletter ?? '—'} · descartadas ${h.discardedRaces ?? 0}`;
+    }
+    renderFailed();
     // Dados do Redis/nuvem NUNCA entram como HTML (achado do critico codex): so textContent.
     const tbody = $('[data-history]'); const rows = (st.history || []).slice(0, 10);
     tbody.replaceChildren();
@@ -157,10 +166,56 @@
       tbody.appendChild(tr);
     }
   }
+  // NEU-143: corridas da dead-letter, com Reenviar. Sem apagar (fica guardada ate reenviar).
+  function renderFailed() {
+    const tbody = $('[data-failed]'); const rows = (st.overview && st.overview.failed) || [];
+    tbody.replaceChildren();
+    if (rows.length === 0) {
+      const tr = document.createElement('tr'); tr.className = 'empty';
+      const td = document.createElement('td'); td.colSpan = 5; td.textContent = st.overview ? 'Nenhuma corrida falhou.' : 'Sem resposta do broker.';
+      tr.appendChild(td); tbody.appendChild(tr); return;
+    }
+    for (const f of rows) {
+      const tr = document.createElement('tr');
+      const cell = (text, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; td.textContent = text; tr.appendChild(td); return td; };
+      cell(f.failedAt ? new Date(Number(f.failedAt)).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—', 'mono');
+      cell(`Jogador ${Number(f.playerId) || '?'}`);
+      cell(String(f.email || '—'), 'mono');
+      cell(S.failureText(f), 'result').dataset.r = 'deadletter';
+      const td = cell('');
+      if (f.retryable && f.jobId) {
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'btn-small'; btn.textContent = 'Reenviar';
+        btn.dataset.jobId = String(f.jobId);
+        btn.dataset.label = `Jogador ${Number(f.playerId) || '?'} (${String(f.email || 'sem e-mail')})`;
+        td.appendChild(btn);
+      } else {
+        td.className = 'mono'; td.textContent = 'não dá para reenviar';
+      }
+      tbody.appendChild(tr);
+    }
+  }
+  $('[data-failed]').addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('button[data-job-id]');
+    if (!btn) return;
+    const msg = $('[data-requeue-msg]');
+    if (!window.confirm(`Reenviar a corrida do ${btn.dataset.label}? Ela volta para a fila de envio.`)) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/dispatch/requeue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobId: btn.dataset.jobId }) });
+      msg.textContent = res.ok ? `Reenviada: ${btn.dataset.label} voltou para a fila.`
+        : res.status === 404 ? 'Essa corrida já tinha sido reenviada.'
+          : res.status === 409 ? 'Essa corrida não dá para reenviar (registro sem dados originais).'
+            : `Falha ao reenviar (${res.status}). Tente de novo.`;
+    } catch (e) {
+      msg.textContent = 'Sem resposta do broker. Ele está de pé?';
+    }
+    await refresh();
+  });
   function renderBanner() {
     const now = Date.now();
     const signals = { 1: S.signalStatus({ lastPacketAt: st.packets[1] && st.packets[1].at, now, poorSignalLevel: null }), 2: S.signalStatus({ lastPacketAt: st.packets[2] && st.packets[2].at, now, poorSignalLevel: null }) };
-    const list = S.alerts({ session: st.session, health: st.health, signals, now, queueSince: st.queueSince, prevDiscarded: st.prevDiscarded });
+    const list = S.alerts({ session: st.session, health: st.health, signals, now, queueSince: st.queueSince, prevDiscarded: st.prevDiscarded, overview: st.overview });
     if (socket && !st.socketOk) list.unshift({ level: 'error', code: 'socket_down', text: 'Sem conexão em tempo real com o broker (a tela não vê a corrida).' });
     const banner = $('[data-banner]');
     banner.hidden = list.length === 0;

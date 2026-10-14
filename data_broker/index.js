@@ -6,6 +6,7 @@ const { createRedisClient, createBlockingRedisClient } = require('./redis_client
 const { createSessionManager } = require('./session_manager');
 const { createSocketServer, registerSocketHandlers } = require('./socket_handlers');
 const { createDispatcher } = require('./api_dispatcher');
+const { createDispatchAdmin } = require('./dispatch_admin');
 
 const config = loadBrokerConfig();
 const log = createBrokerLogger();
@@ -14,7 +15,8 @@ const redis = createRedisClient(config, log);
 const session = createSessionManager(redis, config, log, {
   onDiscarded: (info) => runtimeState.markRaceDiscarded(info && info.reason),
 });
-const server = createHttpServer(() => runtimeState.snapshot(), session, log);
+const dispatchAdmin = createDispatchAdmin(redis, log);
+const server = createHttpServer(() => runtimeState.snapshot(), session, log, dispatchAdmin);
 const io = createSocketServer(server, config.allowedOrigins);
 
 registerSocketHandlers(io, log, runtimeState, session);
