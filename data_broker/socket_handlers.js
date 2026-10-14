@@ -72,11 +72,13 @@ function createForwardEventHandler({ log, socket, event, runtimeState, session, 
 
 // `presence` (opcional, NEU-139): registro de quem esta conectado, alimentado pelo
 // `socket.handshake.auth` de cada peca e pelos eventos que ela manda.
-function registerSocketHandlers(io, log, runtimeState, session, presence = null, now = Date.now) {
+function registerSocketHandlers(io, log, runtimeState, session, presence = null, now = Date.now, hooks = {}) {
   io.on('connection', (socket) => {
     runtimeState.markClientConnected();
     const piece = presence ? presence.onConnect(socket.id, socket.handshake && socket.handshake.auth, now()) : null;
     log('info', 'client_connected', { socketId: socket.id, piece });
+    // NEU-86: o broker manda a escolha do painel (fonte/camera) para a peca que chegou.
+    if (piece && typeof hooks.onPieceConnect === 'function') hooks.onPieceConnect(socket, piece);
 
     socket.on('disconnect', (reason) => {
       runtimeState.markClientDisconnected();

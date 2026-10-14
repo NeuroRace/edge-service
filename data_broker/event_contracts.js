@@ -64,6 +64,10 @@ function validateGestureStatusPayload(payload) {
   if (!isPlainObject(payload)) return 'payload_must_be_object';
   if (!isFiniteNumber(payload.player)) return 'player_must_be_number';
   if (typeof payload.handSeen !== 'boolean') return 'handSeen_must_be_boolean';
+  // NEU-86: camera em uso e erro da ultima troca (opcionais: detector antigo nao manda).
+  if (payload.camera !== undefined && !isFiniteNumber(payload.camera)) return 'camera_must_be_number';
+  const camErr = payload.cameraError;
+  if (camErr !== undefined && camErr !== null && typeof camErr !== 'string') return 'cameraError_must_be_string_or_null';
   return null;
 }
 

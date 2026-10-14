@@ -65,13 +65,48 @@ function handleRequeue(req, res, dispatchAdmin, log) {
   });
 }
 
+const SETUP_STATUS = { invalid_player: 400, invalid_source: 400, invalid_camera: 400, race_in_progress: 409 };
+
+// NEU-86: POST /api/players/source e /api/players/camera. JSON obrigatorio (CSRF, como o requeue).
+function handleSetup(req, res, log, apply) {
+  if (!isJsonRequest(req)) {
+    sendJson(res, 415, { error: 'unsupported_media_type' });
+    req.resume();
+    return;
+  }
+  let body = '';
+  let aborted = false;
+  req.on('data', (chunk) => {
+    if (aborted) return;
+    body += chunk;
+    if (body.length > MAX_BODY_BYTES) {
+      aborted = true;
+      sendJson(res, 413, { error: 'payload_too_large' });
+      req.destroy();
+    }
+  });
+  req.on('end', async () => {
+    if (aborted) return;
+    let data;
+    try { data = JSON.parse(body); } catch { sendJson(res, 400, { error: 'invalid_json' }); return; }
+    try {
+      const result = await apply(data || {});
+      sendJson(res, result.ok ? 200 : SETUP_STATUS[result.error] || 500, result);
+    } catch (err) {
+      log('error', 'api_player_setup_error', { error: err?.message ?? String(err) });
+      sendJson(res, 500, { error: 'internal_error' });
+    }
+  });
+}
+
 // `getHealthSnapshot` (obrigatorio) alimenta GET /health.
 // `session` e `log` sao opcionais: quando `session` esta presente, expoe os
 // endpoints de persistencia (POST /api/players, GET /api/session/current,
 // GET /api/dispatch/history).
 // `dispatchAdmin` (opcional, NEU-143): GET /api/dispatch/overview e POST /api/dispatch/requeue.
 // `getStatus` (opcional, NEU-139): GET /api/status, presenca das pecas para a faixa do painel.
-function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAdmin = null, getStatus = null) {
+// `playerSetup` (opcional, NEU-86): POST /api/players/source e /api/players/camera.
+function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAdmin = null, getStatus = null, playerSetup = null) {
   return http.createServer((req, res) => {
     const urlPath = String(req.url || '').split('?')[0];
     if (req.method === 'GET' && Object.prototype.hasOwnProperty.call(STATIC, urlPath)) {
@@ -174,6 +209,15 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAd
           log('error', 'api_recent_players_clear_error', { error: err?.message ?? String(err) });
           sendJson(res, 500, { error: 'internal_error' });
         });
+      return;
+    }
+
+    if (playerSetup && req.method === 'POST' && req.url === '/api/players/source') {
+      handleSetup(req, res, log, (d) => playerSetup.setSource(d.player, d.source));
+      return;
+    }
+    if (playerSetup && req.method === 'POST' && req.url === '/api/players/camera') {
+      handleSetup(req, res, log, (d) => playerSetup.setCamera(d.player, d.camera));
       return;
     }
 
