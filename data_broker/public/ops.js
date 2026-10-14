@@ -338,7 +338,35 @@
     }
     await refresh();
   });
-  function render() { renderStrip(); renderCards(); renderSignal(1); renderSignal(2); renderRecent(); renderCloud(); renderBanner(); }
+  // ---------- NEU-142: abas e Diagnostico ----------
+  document.querySelectorAll('[data-tab]').forEach((tab) => tab.addEventListener('click', () => {
+    for (const t of document.querySelectorAll('[data-tab]')) t.setAttribute('aria-selected', String(t === tab));
+    for (const panel of document.querySelectorAll('[data-panel]')) panel.hidden = panel.dataset.panel !== tab.dataset.tab;
+  }));
+  const DIAG_KEYS = ['broker', 'redis', 'acquisition-p1', 'gesture-p1', 'jogo', 'acquisition-p2', 'gesture-p2'];
+  function renderDiag() {
+    const d = S.diagnostics({ status: st.status });
+    const byKey = Object.fromEntries(d.pcs.flatMap((pc) => pc.pieces).map((p) => [p.key, p]));
+    for (const key of DIAG_KEYS) {
+      const el = $(`[data-diag="${key}"]`); const p = byKey[key];
+      el.dataset.level = p ? p.level : 'unknown';
+      el.querySelector('[data-diag-word]').textContent = p ? p.word : '—';
+      el.querySelector('[data-diag-version]').textContent = p ? p.version : '—';
+      const line = el.querySelector('[data-diag-line]');
+      line.hidden = !(p && p.line); line.textContent = p && p.line ? p.line : '';
+      // So refaz a lista quando muda: o <details> continua aberto de qualquer jeito.
+      const dl = el.querySelector('[data-diag-details]'); const detailsKey = JSON.stringify(p ? p.details : []);
+      if (dl.dataset.key !== detailsKey) {
+        dl.dataset.key = detailsKey; dl.replaceChildren();
+        for (const [label, value] of (p ? p.details : [])) {
+          const dt = document.createElement('dt'); dt.textContent = label;
+          const dd = document.createElement('dd'); dd.className = 'mono'; dd.textContent = value;
+          dl.append(dt, dd);
+        }
+      }
+    }
+  }
+  function render() { renderStrip(); renderDiag(); renderCards(); renderSignal(1); renderSignal(2); renderRecent(); renderCloud(); renderBanner(); }
 
   setInterval(() => { renderStrip(); renderSignal(1); renderSignal(2); renderBanner(); }, 1000);
   setInterval(refresh, 2000);

@@ -21,9 +21,14 @@
     <ul class="strip-lines mono" data-strip-lines aria-live="polite"></ul>
   </section>
 
+  <nav class="tabs" role="tablist" aria-label="Telas do painel">
+    <button type="button" role="tab" class="tab" data-tab="ops" aria-selected="true">Operação</button>
+    <button type="button" role="tab" class="tab" data-tab="diag" aria-selected="false">Diagnóstico</button>
+  </nav>
+
   <div class="banner" data-banner hidden role="alert" aria-live="assertive"><ul id="banner-list"></ul></div>
 
-  <main class="grid">
+  <main class="grid" data-panel="ops">
     <section class="block" data-block="players" aria-labelledby="h-players">
       <h2 id="h-players"><span class="eyebrow">1</span> Jogadores desta corrida</h2>
       <form id="register-form" class="cards" novalidate>
@@ -110,6 +115,48 @@
       </table>
     </section>
   </main>
+
+  <section class="diag" data-panel="diag" hidden aria-label="Diagnóstico">
+    <div class="diag-pc"><h2 class="diag-pc-name">PC CENTRAL</h2>
+      <details class="diag-piece" data-diag="broker" data-level="unknown">
+        <summary><i class="dot"></i><span class="diag-name mono">broker</span><b class="mono" data-diag-word>—</b><span class="diag-version mono" data-diag-version>—</span></summary>
+        <p class="diag-line mono" data-diag-line hidden></p>
+        <dl class="diag-details" data-diag-details></dl>
+      </details>
+      <details class="diag-piece" data-diag="redis" data-level="unknown">
+        <summary><i class="dot"></i><span class="diag-name mono">redis</span><b class="mono" data-diag-word>—</b><span class="diag-version mono" data-diag-version>—</span></summary>
+        <p class="diag-line mono" data-diag-line hidden></p>
+        <dl class="diag-details" data-diag-details></dl>
+      </details>
+      <details class="diag-piece" data-diag="acquisition-p1" data-level="unknown">
+        <summary><i class="dot"></i><span class="diag-name mono">acquisition-p1</span><b class="mono" data-diag-word>—</b><span class="diag-version mono" data-diag-version>—</span></summary>
+        <p class="diag-line mono" data-diag-line hidden></p>
+        <dl class="diag-details" data-diag-details></dl>
+      </details>
+      <details class="diag-piece" data-diag="gesture-p1" data-level="unknown">
+        <summary><i class="dot"></i><span class="diag-name mono">gesture-p1</span><b class="mono" data-diag-word>—</b><span class="diag-version mono" data-diag-version>—</span></summary>
+        <p class="diag-line mono" data-diag-line hidden></p>
+        <dl class="diag-details" data-diag-details></dl>
+      </details>
+      <details class="diag-piece" data-diag="jogo" data-level="unknown">
+        <summary><i class="dot"></i><span class="diag-name mono">jogo</span><b class="mono" data-diag-word>—</b><span class="diag-version mono" data-diag-version>—</span></summary>
+        <p class="diag-line mono" data-diag-line hidden></p>
+        <dl class="diag-details" data-diag-details></dl>
+      </details>
+    </div>
+    <div class="diag-pc"><h2 class="diag-pc-name">PC COLETOR</h2>
+      <details class="diag-piece" data-diag="acquisition-p2" data-level="unknown">
+        <summary><i class="dot"></i><span class="diag-name mono">acquisition-p2</span><b class="mono" data-diag-word>—</b><span class="diag-version mono" data-diag-version>—</span></summary>
+        <p class="diag-line mono" data-diag-line hidden></p>
+        <dl class="diag-details" data-diag-details></dl>
+      </details>
+      <details class="diag-piece" data-diag="gesture-p2" data-level="unknown">
+        <summary><i class="dot"></i><span class="diag-name mono">gesture-p2</span><b class="mono" data-diag-word>—</b><span class="diag-version mono" data-diag-version>—</span></summary>
+        <p class="diag-line mono" data-diag-line hidden></p>
+        <dl class="diag-details" data-diag-details></dl>
+      </details>
+    </div>
+  </section>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/ops_state.js"></script>

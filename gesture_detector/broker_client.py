@@ -37,12 +37,13 @@ def _spawn_daemon(fn):
 
 
 class WebSocketBrokerClient:
-    def __init__(self, broker_url: str, player_id: int,
+    def __init__(self, broker_url: str, player_id: int, meta=None,
                  client_factory=lambda: socketio.Client(reconnection=False), clock=time.monotonic,
                  spawn=_spawn_daemon):
         """broker_url: ex. 'http://localhost:3000' (central) ou 'http://192.168.50.1:3000' (coletor)."""
         self.broker_url = broker_url
-        self.auth = {"role": "gesture", "player": player_id}
+        # NEU-142: versao, camera e git vao no auth (valor None fica de fora).
+        self.auth = {"role": "gesture", "player": player_id, **{k: v for k, v in (meta or {}).items() if v is not None}}
         # Reconexao automatica do socketio desligada: quem reconecta e connect_to_broker,
         # para nao haver duas tentativas concorrentes.
         self.sio = client_factory()

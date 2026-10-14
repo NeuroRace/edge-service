@@ -2,6 +2,7 @@ import os
 import time
 import cv2
 from broker_client import StatusTicker, WebSocketBrokerClient, gesture_status_payload
+from code_version import code_version, git_info
 import mediapipe as mp
 
 class HandFistDetector:
@@ -94,18 +95,19 @@ class HandFistDetector:
 
 
 def main():
-    
-    cap = cv2.VideoCapture(0)  # 0 = webcam padrão
-    detector = HandFistDetector(consecutive_frames_for_event=5)
-
     print("Iniciando captura da webcam. Pressione 'q' para sair.")
 
     PLAYER_ID = int(os.getenv('PLAYER_ID', '1'))
     BROKER_URL = os.getenv('BROKER_URL', 'http://localhost:3000')
+    # NEU-142: indice da camera vem de CAMERA_INDEX (padrao 0, como antes); vai no Diagnostico.
+    CAMERA_INDEX = int(os.getenv('CAMERA_INDEX', '0'))
+    cap = cv2.VideoCapture(CAMERA_INDEX)
+    detector = HandFistDetector(consecutive_frames_for_event=5)
+    meta = {"version": code_version(), "camera": CAMERA_INDEX, **git_info()}
     
     status_ticker = StatusTicker()
 
-    with WebSocketBrokerClient(BROKER_URL, PLAYER_ID) as broker:
+    with WebSocketBrokerClient(BROKER_URL, PLAYER_ID, meta=meta) as broker:
         while True:
             ret, frame = cap.read()
             if not ret:

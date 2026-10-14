@@ -7,7 +7,8 @@ const { createSessionManager } = require('./session_manager');
 const { createSocketServer, registerSocketHandlers } = require('./socket_handlers');
 const { createDispatcher } = require('./api_dispatcher');
 const { createDispatchAdmin } = require('./dispatch_admin');
-const { createPresence } = require('./presence');
+const { createPresence, buildStatus } = require('./presence');
+const { brokerCodeVersion } = require('./code_version');
 
 const config = loadBrokerConfig();
 const log = createBrokerLogger();
@@ -19,7 +20,10 @@ const session = createSessionManager(redis, config, log, {
 const dispatchAdmin = createDispatchAdmin(redis, log);
 // NEU-139: quem esta conectado (pecas por `auth`, jogo = conexao anonima) + Redis.
 const presence = createPresence();
-const getStatus = () => ({ now: Date.now(), ...presence.snapshot(), redis: { status: redis.status } });
+// NEU-142: versao do broker = hash do proprio codigo, calculada uma vez no boot.
+const brokerVersion = brokerCodeVersion();
+const startedAt = Date.now();
+const getStatus = () => buildStatus({ presence, redisStatus: redis.status, brokerVersion, startedAt, now: Date.now() });
 const server = createHttpServer(() => runtimeState.snapshot(), session, log, dispatchAdmin, getStatus);
 const io = createSocketServer(server, config.allowedOrigins);
 
@@ -50,6 +54,7 @@ if (config.apiUrl && config.edgeIngestToken) {
 server.listen(config.port, () => {
   log('info', 'broker_listening', {
     port: config.port,
+    brokerVersion,
     allowedOrigins: config.allowedOrigins,
   });
 });

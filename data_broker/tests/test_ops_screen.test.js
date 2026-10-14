@@ -36,6 +36,10 @@ test('test_OpsScreenServed_root_returns_html_with_strict_csp_and_three_blocks', 
     assert.doesNotMatch(res.body, /data-step="sent"/);
     // NEU-141: ultimos jogadores com busca, botoes P1/P2 e limpar.
     for (const sel of ['data-block="recent"', 'data-recent-search', 'data-recent-list', 'data-recent-clear']) assert.match(res.body, new RegExp(sel));
+    // NEU-142: abas e blocos fixos do Diagnostico.
+    assert.match(res.body, /data-tab="ops"/); assert.match(res.body, /data-tab="diag"/);
+    assert.match(res.body, /data-panel="diag"/);
+    for (const k of ['broker', 'redis', 'acquisition-p1', 'gesture-p1', 'jogo', 'acquisition-p2', 'gesture-p2']) assert.match(res.body, new RegExp(`data-diag="${k}"`));
   } finally { server.close(); }
 });
 

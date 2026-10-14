@@ -144,4 +144,5 @@ CI:
 ## Observacoes
 
 - O `gesture_detector` continua fora do Docker Compose por decisao deliberada nesta fase.
+- Detector de gesto: `PLAYER_ID`, `BROKER_URL` e `CAMERA_INDEX` (indice da webcam no OpenCV, padrao `0`; aparece como "Camera N" no Diagnostico, N = indice + 1). A versao de cada peca (hash do codigo) e o commit do gesto aparecem na aba Diagnostico do painel (NEU-142).
 - Eventos `gameEvent`, `raceStarted` e `hasFinished` continuam em passthrough no broker; `raceStarted`, `hasFinished` e `eSense` tambem alimentam a persistencia local da corrida (hooks fire-and-forget apos o broadcast).

@@ -18,8 +18,8 @@ test('snapshot: peca esperada sem socket fica desconectada', () => {
   const p = createPresence();
   const s = p.snapshot();
   assert.deepEqual(Object.keys(s.pieces), PIECES);
-  assert.deepEqual(s.pieces['acquisition-p2'], { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null });
-  assert.deepEqual(s.game, { connections: 0, lastGameEvent: null });
+  assert.deepEqual(s.pieces['acquisition-p2'], { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null, meta: {} });
+  assert.deepEqual(s.game, { connections: 0, lastGameEvent: null, recentEvents: [] });
 });
 
 test('eSense e gestureStatus atualizam a peca; desconectar tira', () => {
@@ -29,7 +29,7 @@ test('eSense e gestureStatus atualizam a peca; desconectar tira', () => {
   p.onEvent('a2', 'eSense', { player: 2, attention: 70, poorSignalLevel: 26, source: 'real' }, 500);
   p.onEvent('g2', 'gestureStatus', { player: 2, handSeen: true }, 600);
   let s = p.snapshot();
-  assert.deepEqual(s.pieces['acquisition-p2'], { connected: true, lastEventAt: 500, attention: 70, poorSignalLevel: 26, source: 'real', handSeen: null });
+  assert.deepEqual(s.pieces['acquisition-p2'], { connected: true, lastEventAt: 500, attention: 70, poorSignalLevel: 26, source: 'real', handSeen: null, meta: {} });
   assert.equal(s.pieces['gesture-p2'].handSeen, true);
   assert.equal(s.pieces['gesture-p2'].lastEventAt, 600);
   p.onDisconnect('a2');
@@ -66,7 +66,7 @@ test('jogo = conexoes nao identificadas; painel e test-client nao contam', () =>
   p.onConnect('game', {}, 1);
   p.onEvent('game', 'raceStarted', {}, 50);
   p.onEvent('panel-1', 'hasFinished', {}, 60);
-  assert.deepEqual(p.snapshot().game, { connections: 1, lastGameEvent: { event: 'raceStarted', at: 50 } });
+  assert.deepEqual(p.snapshot().game, { connections: 1, lastGameEvent: { event: 'raceStarted', at: 50 }, recentEvents: [{ event: 'raceStarted', at: 50 }] });
 });
 
 test('evento de socket desconhecido e ignorado', () => {
