@@ -81,7 +81,7 @@ O broker serve em `GET /` (ex.: `http://localhost:3000/`) a tela do operador do 
 - `ACQ_PORT`
 - `EEG_HOST`
 - `BROKER_URL`
-- `SOURCE`
+- `SOURCE` (rotulo do leitor configurado, o modo NeuroSky; NeuroSky ou Bot se escolhe no painel, sem recriar container — NEU-86)
 - `POOR_SIGNAL_LEVEL_THRESHOLD`
 - `EEG_CONNECT_TIMEOUT_SECONDS`
 - `EEG_READ_TIMEOUT_SECONDS`
