@@ -59,12 +59,22 @@ function validateHandGesturePayload(payload) {
   return null;
 }
 
+// NEU-139: sinal de vida do detector de gesto (a cada 2 s). So alimenta a presenca.
+function validateGestureStatusPayload(payload) {
+  if (!isPlainObject(payload)) return 'payload_must_be_object';
+  if (!isFiniteNumber(payload.player)) return 'player_must_be_number';
+  if (typeof payload.handSeen !== 'boolean') return 'handSeen_must_be_boolean';
+  return null;
+}
+
 function validateEventPayload(event, payload) {
   switch (event) {
     case 'eSense':
       return validateEsensePayload(payload);
     case 'handGesture':
       return validateHandGesturePayload(payload);
+    case 'gestureStatus':
+      return validateGestureStatusPayload(payload);
     default:
       return null;
   }
