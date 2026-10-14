@@ -9,6 +9,8 @@ const { createDispatcher } = require('./api_dispatcher');
 const { createDispatchAdmin } = require('./dispatch_admin');
 const { createPresence, buildStatus } = require('./presence');
 const { brokerCodeVersion } = require('./code_version');
+const { createPlayerSetup } = require('./player_setup');
+const { createPieceCommands } = require('./piece_commands');
 
 const config = loadBrokerConfig();
 const log = createBrokerLogger();
@@ -20,14 +22,28 @@ const session = createSessionManager(redis, config, log, {
 const dispatchAdmin = createDispatchAdmin(redis, log);
 // NEU-139: quem esta conectado (pecas por `auth`, jogo = conexao anonima) + Redis.
 const presence = createPresence();
+// NEU-86: fonte e camera de cada jogador (painel -> Redis -> comando para a peca).
+let pieceCommands = null;
+const playerSetup = createPlayerSetup(redis, {
+  raceInProgress: () => session.raceInProgress(),
+  onChange: (field, player) => (field === 'source' ? pieceCommands.pushSource(player) : pieceCommands.pushCamera(player)),
+  log,
+});
+pieceCommands = createPieceCommands(playerSetup, log);
+// Pecas que conectarem antes do load recebem o padrao; o pushAll corrige com o que estava guardado.
+playerSetup.load()
+  .then(() => pieceCommands.pushAll())
+  .catch((err) => log('error', 'player_setup_load_error', { error: err?.message ?? String(err) }));
 // NEU-142: versao do broker = hash do proprio codigo, calculada uma vez no boot.
 const brokerVersion = brokerCodeVersion();
 const startedAt = Date.now();
-const getStatus = () => buildStatus({ presence, redisStatus: redis.status, brokerVersion, startedAt, now: Date.now() });
-const server = createHttpServer(() => runtimeState.snapshot(), session, log, dispatchAdmin, getStatus);
+const getStatus = () => buildStatus({ presence, redisStatus: redis.status, brokerVersion, startedAt, now: Date.now(), setup: playerSetup.get() });
+const server = createHttpServer(() => runtimeState.snapshot(), session, log, dispatchAdmin, getStatus, playerSetup);
 const io = createSocketServer(server, config.allowedOrigins);
 
-registerSocketHandlers(io, log, runtimeState, session, presence);
+registerSocketHandlers(io, log, runtimeState, session, presence, Date.now, {
+  onPieceConnect: (socket, key) => pieceCommands.attach(socket, key),
+});
 
 // Dispatcher (Stage 3 / NEU-7): opt-in via API_URL. Sem API_URL, os jobs
 // acumulam duravelmente em dispatch:queue (comportamento atual preservado).

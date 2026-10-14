@@ -40,7 +40,7 @@ function sanitizeMeta(auth) {
 }
 
 function emptyPiece() {
-  return { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null, eeg: null, lastError: null, meta: {} };
+  return { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null, eeg: null, lastError: null, camera: null, cameraError: null, meta: {} };
 }
 
 function createPresence() {
@@ -64,6 +64,9 @@ function createPresence() {
       s.data.source = p.source ?? null;
     } else if (event === 'gestureStatus') {
       s.data.handSeen = p.handSeen === true;
+      // NEU-86: detector antigo nao manda camera; mantem a ultima conhecida.
+      if (typeof p.camera === 'number' && Number.isFinite(p.camera)) s.data.camera = p.camera;
+      if (p.camera !== undefined) s.data.cameraError = typeof p.cameraError === 'string' ? p.cameraError.slice(0, 200) : null;
     } else if (event === 'acquisitionStatus') {
       // NEU-151: a peca de pe com o EEG fora. `eeg` separa "ThinkGear/fone fora"
       // de "peca caida", que antes chegavam identicos no painel.
@@ -107,12 +110,14 @@ function createPresence() {
 }
 
 // NEU-142: corpo do GET /api/status (relogio do broker em `now`).
-function buildStatus({ presence, redisStatus, brokerVersion, startedAt, now }) {
+function buildStatus({ presence, redisStatus, brokerVersion, startedAt, now, setup = null }) {
   return {
     now,
     ...presence.snapshot(),
     redis: { status: redisStatus },
     broker: { version: brokerVersion, uptimeSeconds: Math.floor((now - startedAt) / 1000) },
+    // NEU-86: escolha de fonte e camera de cada jogador (painel).
+    setup,
   };
 }
 
