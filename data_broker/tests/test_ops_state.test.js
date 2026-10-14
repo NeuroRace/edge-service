@@ -115,3 +115,11 @@ test('cameraText: erro, troca em andamento ou nada (NEU-86)', () => {
   assert.equal(cameraText({ chosen: null, inUse: 0, error: null }), '');
   assert.equal(cameraText({ chosen: 1, inUse: null, error: null }), '');
 });
+
+test('cameraSelectValue: o seletor mostra a camera em uso, nao a escolha que falhou (NEU-86)', () => {
+  const { cameraSelectValue } = require('../public/ops_state');
+  assert.equal(cameraSelectValue({ chosen: 2, inUse: 1 }), '1');
+  assert.equal(cameraSelectValue({ chosen: 2, inUse: null }), '2', 'detector sem noticia: mostra a escolha');
+  assert.equal(cameraSelectValue({ chosen: null, inUse: 0 }), '0');
+  assert.equal(cameraSelectValue({ chosen: null, inUse: null }), '0');
+});
