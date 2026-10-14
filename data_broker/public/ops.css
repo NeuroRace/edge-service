@@ -70,5 +70,9 @@ input[aria-invalid="true"] { border-color: var(--error); }
 .history td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--hairline); color: var(--fg); } .history td.mono { color: var(--fg-muted); }
 .history .empty td { color: var(--fg-muted); font-style: italic; }
 .result[data-r="sent"] { color: var(--ok); } .result[data-r="deadletter"] { color: var(--error); }
+.failed-head { display: flex; gap: 1rem; align-items: baseline; flex-wrap: wrap; margin: 1.2rem 0 0.4rem; }
+.subhead { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--fg-strong); }
+.btn-small { font: inherit; font-size: 0.78rem; padding: 0.2rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-elev); color: var(--fg-strong); cursor: pointer; }
+.btn-small:hover { border-color: var(--fg-muted); } .btn-small:focus-visible { outline: 2px solid var(--fg-strong); outline-offset: 2px; } .btn-small[disabled] { opacity: 0.6; cursor: wait; }
 @media (max-width: 720px) { .cards, .signals { grid-template-columns: 1fr; } .signal-body { grid-template-columns: 90px 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
