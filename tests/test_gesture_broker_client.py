@@ -1,4 +1,5 @@
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -16,14 +17,17 @@ class FakeClock:
 
 
 class FakeSio:
-    def __init__(self, fail=True):
+    def __init__(self, fail=True, delay=0.0):
         self.connected = False
         self.fail = fail
+        self.delay = delay
         self.connect_calls = []
         self.emitted = []
 
     def connect(self, url, **kwargs):
         self.connect_calls.append((url, kwargs))
+        if self.delay:
+            time.sleep(self.delay)
         if self.fail:
             raise ConnectionError("broker fora")
         self.connected = True
@@ -38,7 +42,7 @@ class FakeSio:
 class GestureBrokerClientTests(unittest.TestCase):
     def test_broker_down_never_raises_and_retries_at_most_every_2s(self):
         clock, sio = FakeClock(), FakeSio(fail=True)
-        client = WebSocketBrokerClient("http://x:3000", 2, client_factory=lambda: sio, clock=clock)
+        client = WebSocketBrokerClient("http://x:3000", 2, client_factory=lambda: sio, clock=clock, spawn=lambda fn: fn())
         self.assertFalse(client.send_event("handGesture", {"player": 2}))
         clock.t = 1.0
         self.assertFalse(client.send_event("handGesture", {"player": 2}))
@@ -49,11 +53,21 @@ class GestureBrokerClientTests(unittest.TestCase):
 
     def test_connect_sends_auth_and_events_flow_once_connected(self):
         clock, sio = FakeClock(), FakeSio(fail=False)
-        client = WebSocketBrokerClient("http://x:3000", 1, client_factory=lambda: sio, clock=clock)
+        client = WebSocketBrokerClient("http://x:3000", 1, client_factory=lambda: sio, clock=clock, spawn=lambda fn: fn())
         with client:
             self.assertTrue(client.send_event("gestureStatus", {"player": 1}))
         self.assertEqual(sio.connect_calls[0][1]["auth"], {"role": "gesture", "player": 1})
         self.assertEqual(sio.emitted, [("gestureStatus", {"player": 1})])
+
+    def test_slow_connect_never_blocks_the_video_loop(self):
+        # Broker inalcancavel (cabo puxado): o connect pode travar segundos. Isso roda fora
+        # do loop de video, senao a janela da camera congela.
+        sio = FakeSio(fail=True, delay=0.5)
+        client = WebSocketBrokerClient("http://x:3000", 2, client_factory=lambda: sio)
+        started = time.monotonic()
+        self.assertFalse(client.send_event("gestureStatus", {"player": 2}))
+        self.assertFalse(client.send_event("gestureStatus", {"player": 2}))
+        self.assertLess(time.monotonic() - started, 0.1)
 
     def test_status_ticker_fires_immediately_then_every_interval(self):
         clock = FakeClock()
