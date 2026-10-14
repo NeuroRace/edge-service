@@ -12,8 +12,13 @@ RECONNECT_INTERVAL_S = 2.0
 STATUS_INTERVAL_S = 2.0
 
 
-def gesture_status_payload(player_id: int, hand_seen: bool, now_ms: int) -> dict:
-    return {"player": player_id, "handSeen": bool(hand_seen), "timeStamp": now_ms}
+def gesture_status_payload(player_id: int, hand_seen: bool, now_ms: int, camera=None, camera_error=None) -> dict:
+    payload = {"player": player_id, "handSeen": bool(hand_seen), "timeStamp": now_ms}
+    # NEU-86: camera em uso e o erro da ultima troca, para o painel.
+    if camera is not None:
+        payload["camera"] = camera
+        payload["cameraError"] = camera_error
+    return payload
 
 
 class StatusTicker:
@@ -39,7 +44,7 @@ def _spawn_daemon(fn):
 class WebSocketBrokerClient:
     def __init__(self, broker_url: str, player_id: int, meta=None,
                  client_factory=lambda: socketio.Client(reconnection=False), clock=time.monotonic,
-                 spawn=_spawn_daemon):
+                 spawn=_spawn_daemon, handlers=None):
         """broker_url: ex. 'http://localhost:3000' (central) ou 'http://192.168.50.1:3000' (coletor)."""
         self.broker_url = broker_url
         # NEU-142: versao, camera e git vao no auth (valor None fica de fora).
@@ -47,6 +52,9 @@ class WebSocketBrokerClient:
         # Reconexao automatica do socketio desligada: quem reconecta e connect_to_broker,
         # para nao haver duas tentativas concorrentes.
         self.sio = client_factory()
+        # NEU-86: comandos do broker (setCamera). Registrados antes de qualquer connect.
+        for event, fn in (handlers or {}).items():
+            self.sio.on(event, fn)
         self._clock = clock
         self._spawn = spawn
         self._last_attempt = None
