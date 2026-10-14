@@ -7,6 +7,7 @@ const { createSessionManager } = require('./session_manager');
 const { createSocketServer, registerSocketHandlers } = require('./socket_handlers');
 const { createDispatcher } = require('./api_dispatcher');
 const { createDispatchAdmin } = require('./dispatch_admin');
+const { createPresence } = require('./presence');
 
 const config = loadBrokerConfig();
 const log = createBrokerLogger();
@@ -16,10 +17,13 @@ const session = createSessionManager(redis, config, log, {
   onDiscarded: (info) => runtimeState.markRaceDiscarded(info && info.reason),
 });
 const dispatchAdmin = createDispatchAdmin(redis, log);
-const server = createHttpServer(() => runtimeState.snapshot(), session, log, dispatchAdmin);
+// NEU-139: quem esta conectado (pecas por `auth`, jogo = conexao anonima) + Redis.
+const presence = createPresence();
+const getStatus = () => ({ now: Date.now(), ...presence.snapshot(), redis: { status: redis.status } });
+const server = createHttpServer(() => runtimeState.snapshot(), session, log, dispatchAdmin, getStatus);
 const io = createSocketServer(server, config.allowedOrigins);
 
-registerSocketHandlers(io, log, runtimeState, session);
+registerSocketHandlers(io, log, runtimeState, session, presence);
 
 // Dispatcher (Stage 3 / NEU-7): opt-in via API_URL. Sem API_URL, os jobs
 // acumulam duravelmente em dispatch:queue (comportamento atual preservado).

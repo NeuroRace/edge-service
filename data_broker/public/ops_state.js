@@ -137,5 +137,80 @@
     return out;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, QUEUE_STUCK_MS };
+  // ---------- NEU-139: faixa de status ----------
+  const STALE_MS = 10000;
+  const PIECE_PC = { 'acquisition-p1': 'PC central', 'gesture-p1': 'PC central', 'acquisition-p2': 'PC coletor', 'gesture-p2': 'PC coletor' };
+
+  // Poor Signal do NeuroSky: 0 contato perfeito, 200 sem contato.
+  function pslLevel(psl) {
+    if (psl === null || psl === undefined || !Number.isFinite(Number(psl))) return 'none';
+    const n = Number(psl);
+    return n === 0 ? 'good' : n < 200 ? 'weak' : 'bad';
+  }
+
+  // Sem noticia ha mais de STALE_MS (ou nunca) nao e 'ok'. `now` = relogio do broker.
+  function pieceState(piece, now) {
+    if (!piece || !piece.connected) return 'down';
+    if (piece.lastEventAt === null || piece.lastEventAt === undefined || now - piece.lastEventAt > STALE_MS) return 'stale';
+    return 'ok';
+  }
+
+  function pieceLine(key, state) {
+    const pc = PIECE_PC[key];
+    const player = key.slice(-2).toUpperCase();
+    if (key.startsWith('acquisition')) {
+      // A acquisition so conecta no broker depois de conectar no EEG (acquisition_runner): sem
+      // conexao pode ser ThinkGear/fone fora OU a peca caida. A mais provavel vem primeiro.
+      return state === 'down'
+        ? `${key} sem conexão · confira o ThinkGear e o fone do ${player} no ${pc} (ou suba as peças)`
+        : `${key} sem dados · confira o fone do ${player} no ${pc}`;
+    }
+    return state === 'down' ? `${key} desligado · abra o detector de gesto no ${pc}` : `${key} sem notícia · reinicie o detector de gesto no ${pc}`;
+  }
+
+  function groupLevel(states) {
+    if (states.every((s) => s === 'ok')) return 'ok';
+    if (states.every((s) => s === 'down')) return 'down';
+    return 'warn';
+  }
+
+  function statusStrip({ status, health, overview, waitingSince, now }) {
+    if (!status) {
+      return { groups: { central: 'unknown', coletor: 'unknown', jogo: 'unknown', nuvem: 'unknown' }, lines: ['broker sem resposta · confira o PC central'] };
+    }
+    const t = Number.isFinite(Number(status.now)) ? Number(status.now) : now;
+    const pieces = status.pieces || {};
+    const lines = [];
+    const states = (keys) => keys.map((k) => [k, pieceState(pieces[k], t)]);
+
+    const redisState = status.redis && status.redis.status === 'ready' ? 'ok' : 'down';
+    const centralPieces = states(['acquisition-p1', 'gesture-p1']);
+    const central = groupLevel([redisState, ...centralPieces.map(([, s]) => s)]);
+    if (redisState === 'down') lines.push('redis fora · reinicie o redis no PC central (a fila fica guardada)');
+    for (const [k, s] of centralPieces) if (s !== 'ok') lines.push(pieceLine(k, s));
+
+    const coletorPieces = states(['acquisition-p2', 'gesture-p2']);
+    const coletor = groupLevel(coletorPieces.map(([, s]) => s));
+    if (coletor === 'down') lines.push('Coletor sem resposta · confira se o PC coletor está ligado e o cabo plugado');
+    else for (const [k, s] of coletorPieces) if (s !== 'ok') lines.push(pieceLine(k, s));
+
+    const jogo = status.game && Number(status.game.connections) > 0 ? 'ok' : 'down';
+    if (jogo === 'down') lines.push('jogo não conectado · abra o jogo no PC central');
+
+    let nuvem = 'unknown';
+    const disp = health && health.dispatcher;
+    if (health && (!disp || !disp.enabled)) {
+      nuvem = 'down';
+      lines.push('nuvem desligada · corridas ficam guardadas no PC central');
+    } else if (health && cloudNeedsAttention({ overview, waitingSince, now })) {
+      nuvem = 'warn';
+      const failed = Number(overview && overview.counts && overview.counts.failed) || 0;
+      lines.push(failed > 0 ? `${failed} corrida(s) não subiram · use Reenviar no bloco Nuvem` : 'corridas esperando há mais de 30 s · internet do evento?');
+    } else if (health) {
+      nuvem = 'ok';
+    }
+    return { groups: { central, coletor, jogo, nuvem }, lines };
+  }
+
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, QUEUE_STUCK_MS, STALE_MS };
 }));

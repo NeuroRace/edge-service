@@ -23,7 +23,7 @@ function createSocketServer(server, allowedOrigins) {
 // `session` e opcional: quando presente (persistencia habilitada), os eventos de
 // corrida sao espelhados para a camada de persistencia APOS o broadcast, em
 // fire-and-forget (uma falha de persistencia nunca bloqueia o broadcast em tempo real).
-function createForwardEventHandler({ log, socket, event, runtimeState, session }) {
+function createForwardEventHandler({ log, socket, event, runtimeState, session, presence = null, now = Date.now }) {
   return (payload) => {
     const validationError = validateEventPayload(event, payload);
 
@@ -39,6 +39,7 @@ function createForwardEventHandler({ log, socket, event, runtimeState, session }
     }
 
     runtimeState.markEventValidated();
+    if (presence) presence.onEvent(socket.id, event, payload, now());
     log('info', 'event_received', {
       event,
       socketId: socket.id,
@@ -69,19 +70,29 @@ function createForwardEventHandler({ log, socket, event, runtimeState, session }
   };
 }
 
-function registerSocketHandlers(io, log, runtimeState, session) {
+// `presence` (opcional, NEU-139): registro de quem esta conectado, alimentado pelo
+// `socket.handshake.auth` de cada peca e pelos eventos que ela manda.
+function registerSocketHandlers(io, log, runtimeState, session, presence = null, now = Date.now) {
   io.on('connection', (socket) => {
     runtimeState.markClientConnected();
-    log('info', 'client_connected', { socketId: socket.id });
+    const piece = presence ? presence.onConnect(socket.id, socket.handshake && socket.handshake.auth, now()) : null;
+    log('info', 'client_connected', { socketId: socket.id, piece });
 
     socket.on('disconnect', (reason) => {
       runtimeState.markClientDisconnected();
-      log('info', 'client_disconnected', { socketId: socket.id, reason });
+      if (presence) presence.onDisconnect(socket.id);
+      log('info', 'client_disconnected', { socketId: socket.id, piece, reason });
     });
 
     for (const event of BROKER_EVENTS) {
-      socket.on(event, createForwardEventHandler({ log, socket, event, runtimeState, session }));
+      socket.on(event, createForwardEventHandler({ log, socket, event, runtimeState, session, presence, now }));
     }
+
+    // NEU-139: sinal de vida do gesto. NAO entra em BROKER_EVENTS: nunca e repassado.
+    socket.on('gestureStatus', (payload) => {
+      if (!presence || validateEventPayload('gestureStatus', payload) !== null) return;
+      presence.onEvent(socket.id, 'gestureStatus', payload, now());
+    });
   });
 }
 

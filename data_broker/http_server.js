@@ -66,7 +66,8 @@ function handleRequeue(req, res, dispatchAdmin, log) {
 // endpoints de persistencia (POST /api/players, GET /api/session/current,
 // GET /api/dispatch/history).
 // `dispatchAdmin` (opcional, NEU-143): GET /api/dispatch/overview e POST /api/dispatch/requeue.
-function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAdmin = null) {
+// `getStatus` (opcional, NEU-139): GET /api/status, presenca das pecas para a faixa do painel.
+function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAdmin = null, getStatus = null) {
   return http.createServer((req, res) => {
     const urlPath = String(req.url || '').split('?')[0];
     if (req.method === 'GET' && Object.prototype.hasOwnProperty.call(STATIC, urlPath)) {
@@ -87,6 +88,12 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAd
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(getHealthSnapshot()));
+      return;
+    }
+
+    // NEU-139: presenca das pecas para a faixa de status (relogio do broker em `now`).
+    if (getStatus && req.method === 'GET' && req.url === '/api/status') {
+      sendJson(res, 200, getStatus());
       return;
     }
 

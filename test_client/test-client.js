@@ -2,7 +2,8 @@ const io = require('socket.io-client');
 
 const BROKER = process.env.BROKER_URL || 'http://broker:3000';
 
-const socket = io(BROKER);
+// NEU-139: se apresenta, senao o broker o contaria como o jogo (conexao anonima).
+const socket = io(BROKER, { auth: { role: 'test-client' } });
 
 socket.on('connect', () => console.log('Cliente teste conectado', socket.id));
 socket.on('disconnect', () => console.log('Cliente teste desconectado'));

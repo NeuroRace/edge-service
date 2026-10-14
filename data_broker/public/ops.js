@@ -11,6 +11,10 @@
     health: null,
     history: [],
     overview: null,                         // NEU-143: /api/dispatch/overview
+    status: null,                           // NEU-139: /api/status (presenca das pecas)
+    waitingSince: null,                     // desde quando ha corrida esperando envio
+    pslSeries: { 1: [], 2: [] },            // [{ t, a }] Poor Signal escalado 0..100
+    fists: { 1: [], 2: [] },                // horarios dos punhos (ultimo minuto)
     raceEvents: { 1: false, 2: false },
     packets: { 1: null, 2: null },          // { at, psl, attention }
     series: { 1: [], 2: [] },               // [{ t, a }]
@@ -26,7 +30,7 @@
     return res.json();
   }
   async function refresh() {
-    const [health, session, history, overview] = await Promise.allSettled([getJson('/health'), getJson('/api/session/current'), getJson('/api/dispatch/history'), getJson('/api/dispatch/overview')]);
+    const [health, session, history, overview, status] = await Promise.allSettled([getJson('/health'), getJson('/api/session/current'), getJson('/api/dispatch/history'), getJson('/api/dispatch/overview'), getJson('/api/status')]);
     if (health.status === 'fulfilled') {
       st.health = health.value;
       if (st.prevDiscarded === null) st.prevDiscarded = Number(st.health.discardedRaces || 0);
@@ -37,10 +41,15 @@
     if (session.status === 'fulfilled') st.session = session.value;
     if (history.status === 'fulfilled') st.history = history.value;
     st.overview = overview.status === 'fulfilled' ? overview.value : null;
+    st.status = status.status === 'fulfilled' ? status.value : null;
+    const waiting = Number(st.overview && st.overview.counts && st.overview.counts.waiting) || 0;
+    if (waiting > 0 && st.waitingSince === null) st.waitingSince = Date.now();
+    if (waiting === 0) st.waitingSince = null;
     render();
   }
 
-  const socket = window.io ? window.io({ transports: ['websocket', 'polling'] }) : null;
+  // NEU-139: o painel se apresenta, senao o broker o contaria como o jogo (conexao anonima).
+  const socket = window.io ? window.io({ transports: ['websocket', 'polling'], auth: { role: 'panel' } }) : null;
   if (socket) {
     socket.on('connect', () => { st.socketOk = true; render(); });
     socket.on('disconnect', () => { st.socketOk = false; render(); });
@@ -48,9 +57,19 @@
       const slot = Number(p && p.player);
       if (slot !== 1 && slot !== 2) return;
       const now = Date.now();
-      st.packets[slot] = { at: now, psl: p.poorSignalLevel, attention: Number(p.attention) };
+      st.packets[slot] = { at: now, psl: p.poorSignalLevel, attention: Number(p.attention), source: p.source };
       const s = st.series[slot]; s.push({ t: now, a: Number(p.attention) });
       while (s.length && now - s[0].t > SPARK_MS) s.shift();
+      if (p.poorSignalLevel !== null && p.poorSignalLevel !== undefined) {
+        const ps = st.pslSeries[slot]; ps.push({ t: now, a: Math.min(100, Number(p.poorSignalLevel) / 2) });
+        while (ps.length && now - ps[0].t > SPARK_MS) ps.shift();
+      }
+      renderSignal(slot);
+    });
+    socket.on('handGesture', (p) => {
+      const slot = Number(p && p.player);
+      if (slot !== 1 && slot !== 2) return;
+      st.fists[slot].push(Date.now());
       renderSignal(slot);
     });
     socket.on('raceStarted', () => { st.raceEvents = { 1: false, 2: false }; setTimeout(refresh, 300); });
@@ -93,8 +112,9 @@
   });
 
   // ---------- render ----------
-  const STATE_LABEL = { waiting: 'Aguardando', registered: 'Registrado', anonymous: 'Anônimo — não vai para a nuvem', racing: 'Correndo', finished: 'Finalizada — enviando…', sent: 'Enviada ✓', rejected: 'Falhou ao enviar' };
-  const STEP_ORDER = ['registered', 'racing', 'finished', 'sent'];
+  // NEU-139 (spec B9): o envio a nuvem nao aparece no card; "Terminou" ja libera a proxima.
+  const STATE_LABEL = { waiting: 'Aguardando', registered: 'Registrado', anonymous: 'Anônimo — não vai para a nuvem', racing: 'Correndo', finished: 'Terminou', sent: 'Terminou', rejected: 'Terminou' };
+  const STEP_ORDER = ['registered', 'racing', 'finished'];
   const HINT_DEFAULT = 'Registre antes da largada. O registro vale por 1 hora.';
   function renderCards() {
     // Sem dupla registrada para a proxima corrida, a dica volta ao padrao (nao fica "pode dar a largada" apos o envio).
@@ -104,7 +124,7 @@
       const card = $(`.card[data-slot="${slot}"]`);
       card.dataset.state = state;
       $(`[data-state-chip="${slot}"]`).textContent = STATE_LABEL[state];
-      const idx = state === 'rejected' ? 3 : STEP_ORDER.indexOf(state);
+      const idx = state === 'sent' || state === 'rejected' ? 2 : STEP_ORDER.indexOf(state);
       card.querySelectorAll('.steps li').forEach((li, i) => { li.dataset.done = String(i < idx); li.dataset.current = String(i === idx); });
       // Durante a corrida (ate o envio) o campo mostra o e-mail em uso e fica travado;
       // depois libera para a proxima dupla.
@@ -126,10 +146,41 @@
     const link = $(`[data-link="${slot}"]`); link.dataset.linkState = sig.link;
     const age = pk ? Math.round((now - pk.at) / 1000) : null;
     link.replaceChildren(Object.assign(document.createElement('i'), { className: 'dot' }), document.createTextNode(' ' + (pk ? (sig.link === 'ok' ? 'conectado' : `último pacote há ${age} s`) : 'sem pacotes')));
-    $(`[data-attn="${slot}"]`).textContent = pk && sig.link !== 'lost' ? String(pk.attention) : '—';
-    const q = $(`[data-quality="${slot}"]`); q.dataset.q = sig.quality;
-    q.textContent = `contato: ${sig.quality === 'good' ? 'bom' : sig.quality === 'weak' ? 'fraco' : sig.link === 'lost' ? '—' : 'sem contato'}`;
-    $(`[data-spark="${slot}"]`).setAttribute('d', sparkPath(st.series[slot]));
+    // NEU-139 (spec B5): sem dados ha mais de 10 s -> "Sem dados" em vermelho, nunca numero congelado.
+    const attn = $(`[data-attn="${slot}"]`); const psl = $(`[data-psl="${slot}"]`);
+    if (!pk || now - pk.at > S.STALE_MS) {
+      attn.textContent = 'Sem dados'; attn.dataset.level = 'bad';
+      psl.textContent = 'Sem dados'; psl.dataset.level = 'bad';
+      $(`[data-spark="${slot}"]`).setAttribute('d', '');
+      $(`[data-spark-psl="${slot}"]`).setAttribute('d', '');
+    } else {
+      attn.textContent = String(pk.attention); attn.dataset.level = 'none';
+      if (pk.source === 'bot') { psl.textContent = 'simulado'; psl.dataset.level = 'none'; }
+      else { psl.textContent = pk.psl === null || pk.psl === undefined ? '—' : String(pk.psl); psl.dataset.level = S.pslLevel(pk.psl); }
+      $(`[data-spark="${slot}"]`).setAttribute('d', sparkPath(st.series[slot]));
+      $(`[data-spark-psl="${slot}"]`).setAttribute('d', pk.source === 'bot' ? '' : sparkPath(st.pslSeries[slot]));
+    }
+    // Gesto: um traco por punho no ultimo minuto + a contagem.
+    const fists = st.fists[slot]; while (fists.length && now - fists[0] > SPARK_MS) fists.shift();
+    $(`[data-fists="${slot}"]`).textContent = String(fists.length);
+    const g = $(`[data-gesture="${slot}"]`);
+    g.replaceChildren(...fists.map((t) => {
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('x', ((SPARK_MS - (now - t)) / SPARK_MS * 238).toFixed(1)); r.setAttribute('y', '0');
+      r.setAttribute('width', '2'); r.setAttribute('height', '24');
+      return r;
+    }));
+  }
+  // NEU-139: faixa de status (Central, Coletor, Jogo, Nuvem) com o que fazer.
+  const LEVEL_WORD = { ok: 'OK', warn: 'Atenção', down: 'Fora', unknown: '—' };
+  function renderStrip() {
+    const r = S.statusStrip({ status: st.status, health: st.health, overview: st.overview, waitingSince: st.waitingSince, now: Date.now() });
+    for (const [g, level] of Object.entries(r.groups)) {
+      const ball = $(`[data-ball="${g}"]`); ball.dataset.level = level;
+      ball.querySelector('[data-ball-word]').textContent = LEVEL_WORD[level];
+    }
+    const ul = $('[data-strip-lines]'); ul.replaceChildren();
+    for (const line of r.lines) { const li = document.createElement('li'); li.textContent = line; ul.appendChild(li); }
   }
   function renderCloud() {
     const h = st.health; const chip = $('[data-cloud-chip]'); const counts = $('[data-counts]');
@@ -216,7 +267,9 @@
   function renderBanner() {
     const now = Date.now();
     const signals = { 1: S.signalStatus({ lastPacketAt: st.packets[1] && st.packets[1].at, now, poorSignalLevel: null }), 2: S.signalStatus({ lastPacketAt: st.packets[2] && st.packets[2].at, now, poorSignalLevel: null }) };
-    const list = S.alerts({ session: st.session, health: st.health, signals, now, queueSince: st.queueSince, prevDiscarded: st.prevDiscarded, overview: st.overview });
+    // A faixa de status cobre leitor sem sinal e nuvem atrasada/com falha (NEU-139): fora do banner.
+    const list = S.alerts({ session: st.session, health: st.health, signals, now, queueSince: st.queueSince, prevDiscarded: st.prevDiscarded, overview: st.overview })
+      .filter((a) => !['signal_lost', 'queue_stuck', 'cloud_failed'].includes(a.code));
     if (socket && !st.socketOk) list.unshift({ level: 'error', code: 'socket_down', text: 'Sem conexão em tempo real com o broker (a tela não vê a corrida).' });
     const banner = $('[data-banner]');
     banner.hidden = list.length === 0;
@@ -224,9 +277,9 @@
     const ul = $('#banner-list'); ul.replaceChildren();
     for (const a of list) { const li = document.createElement('li'); li.dataset.level = a.level; li.dataset.code = a.code; li.textContent = a.text; ul.appendChild(li); }
   }
-  function render() { renderCards(); renderSignal(1); renderSignal(2); renderCloud(); renderBanner(); }
+  function render() { renderStrip(); renderCards(); renderSignal(1); renderSignal(2); renderCloud(); renderBanner(); }
 
-  setInterval(() => { $('#clock').textContent = new Date().toLocaleTimeString('pt-BR'); renderSignal(1); renderSignal(2); renderBanner(); }, 1000);
+  setInterval(() => { renderStrip(); renderSignal(1); renderSignal(2); renderBanner(); }, 1000);
   setInterval(refresh, 2000);
   refresh();
 }());

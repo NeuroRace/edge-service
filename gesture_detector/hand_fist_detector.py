@@ -1,7 +1,7 @@
 import os
 import time
 import cv2
-from broker_client import WebSocketBrokerClient
+from broker_client import StatusTicker, WebSocketBrokerClient, gesture_status_payload
 import mediapipe as mp
 
 class HandFistDetector:
@@ -22,6 +22,8 @@ class HandFistDetector:
         self.consecutive_frames_for_event = consecutive_frames_for_event
         self.closed_counter = 0
         self.last_state_closed = False
+        # NEU-139: mao vista no ultimo frame (vai no gestureStatus para o painel).
+        self.last_hand_seen = False
 
     def _is_fist(self, hand_landmarks) -> bool:
         """
@@ -53,6 +55,7 @@ class HandFistDetector:
         """
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.hands.process(rgb)
+        self.last_hand_seen = bool(results.multi_hand_landmarks)
         is_closed = False
         event_closed = False
 
@@ -100,7 +103,9 @@ def main():
     PLAYER_ID = int(os.getenv('PLAYER_ID', '1'))
     BROKER_URL = os.getenv('BROKER_URL', 'http://localhost:3000')
     
-    with WebSocketBrokerClient(BROKER_URL) as broker:
+    status_ticker = StatusTicker()
+
+    with WebSocketBrokerClient(BROKER_URL, PLAYER_ID) as broker:
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -108,6 +113,10 @@ def main():
                 break
 
             frame, is_closed, event_closed = detector.process_frame(frame)
+
+            # NEU-139: sinal de vida a cada 2 s (o painel distingue gesto parado de gesto morto).
+            if status_ticker.due():
+                broker.send_event("gestureStatus", gesture_status_payload(PLAYER_ID, detector.last_hand_seen, int(time.time() * 1000)))
 
             # Mostra o estado atual na tela
             status_text = "PUNHO FECHADO" if is_closed else "MAO ABERTA/INDEFINIDA"
@@ -119,17 +128,11 @@ def main():
             if event_closed:
                 now_ms = int(time.time() * 1000)
 
-                try:
-                    broker.send_event(
-                        event_type="handGesture",
-                        payload={
-                        'player': PLAYER_ID,
-                        'timeStamp': now_ms
-                        }
-                    )
-                    print(f"[EVENTO] Punho fechado de player {PLAYER_ID} detectado! Enviando ao Broker em {BROKER_URL}")
-                except Exception as e:
-                    print(f"[WARN] Não foi possível enviar evento ao Broker: {e}")
+                # send_event nao levanta excecao: com o broker fora, o evento e descartado.
+                if broker.send_event("handGesture", {'player': PLAYER_ID, 'timeStamp': now_ms}):
+                    print(f"[EVENTO] Punho fechado de player {PLAYER_ID} detectado! Enviado ao Broker em {BROKER_URL}")
+                else:
+                    print(f"[WARN] Punho do player {PLAYER_ID} nao enviado: Broker fora ({BROKER_URL})")
                 
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
