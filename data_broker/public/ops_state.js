@@ -61,6 +61,7 @@
   // Durante uma queda da nuvem elas ficam em `retrying`, nao em `queue`.
   function pendingCount(counts) {
     return Number((counts && counts.queue) || 0) + Number((counts && counts.retrying) || 0);
+  }
 
   // NEU-143: motivo de uma corrida que nao subiu (entrada de /api/dispatch/overview).
   function failureText(f) {
@@ -135,7 +136,6 @@
     }
     return out;
   }
-
 
   return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, QUEUE_STUCK_MS };
 }));

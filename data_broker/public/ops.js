@@ -137,17 +137,13 @@
     const d = h.dispatcher || { enabled: false };
     chip.dataset.on = String(!!d.enabled);
     chip.textContent = d.enabled ? `Nuvem: ligada → ${d.target || '?'}` : 'Nuvem: DESLIGADA';
-
-    const c = d.counts || {};
-    counts.textContent = `fila ${c.queue ?? '—'} · nova tentativa ${c.retrying ?? '—'} · enviando ${c.processing ?? '—'} · falhas ${c.deadletter ?? '—'} · descartadas ${h.discardedRaces ?? 0}`;
-
     const o = st.overview && st.overview.counts;
     if (o) {
       const last = st.overview.lastSentAt ? new Date(Number(st.overview.lastSentAt)).toLocaleTimeString('pt-BR') : '—';
       counts.textContent = `esperando ${o.waiting} · enviando ${o.sending} · falharam ${o.failed} · último envio ok ${last} · descartadas ${h.discardedRaces ?? 0}`;
     } else {
       const c = d.counts || {};
-      counts.textContent = `fila ${c.queue ?? '—'} · enviando ${c.processing ?? '—'} · falhas ${c.deadletter ?? '—'} · descartadas ${h.discardedRaces ?? 0}`;
+      counts.textContent = `fila ${c.queue ?? '—'} · nova tentativa ${c.retrying ?? '—'} · enviando ${c.processing ?? '—'} · falhas ${c.deadletter ?? '—'} · descartadas ${h.discardedRaces ?? 0}`;
     }
     renderFailed();
 
