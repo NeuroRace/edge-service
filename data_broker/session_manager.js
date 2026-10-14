@@ -30,7 +30,14 @@ async function execMulti(multi) {
 // `hooks.onDiscarded({ playerId, sessionId, reason })` (opcional) e chamado quando uma
 // corrida consolidada e descartada: jogador sem e-mail registrado (NEU-73,
 // `no_email_registered`) ou humano sem EEG (NEU-104, `no_eeg_signal`). Alimenta o /health.
+// NEU-141: ultimos jogadores cadastrados (registrar de novo com um clique). Sorted set
+// contato -> horario do ultimo registro; fica no Redis do PC central (funciona sem internet)
+// e so e apagado a mao (botao "Limpar lista").
+const RECENT_PLAYERS = 'players:recent';
+const RECENT_PLAYERS_MAX = 200;
+
 function createSessionManager(redis, config, log, hooks = {}) {
+  const now = typeof hooks.now === 'function' ? hooks.now : Date.now;
   const minEegPackets = Number(config?.minEegPackets) || 1;
 
   // Identificacao por UUID Supabase ainda nao implementada (Stage 3 / NEU-37).
@@ -58,18 +65,21 @@ function createSessionManager(redis, config, log, hooks = {}) {
     const player1 = await validateEmailRemote(player1Email);
     const player2 = await validateEmailRemote(player2Email);
 
-    await execMulti(
-      redis
-        .multi()
-        .hset(
-          'pending:players',
-          'player1Email', player1Email,
-          'player1Uuid', player1.uuid || '',
-          'player2Email', player2Email,
-          'player2Uuid', player2.uuid || '',
-        )
-        .expire('pending:players', 3600),
-    );
+    const multi = redis
+      .multi()
+      .hset(
+        'pending:players',
+        'player1Email', player1Email,
+        'player1Uuid', player1.uuid || '',
+        'player2Email', player2Email,
+        'player2Uuid', player2.uuid || '',
+      )
+      .expire('pending:players', 3600);
+    // So cadastrados entram na lista (anonimo nunca). Registrar de novo so atualiza o horario.
+    const at = now();
+    for (const email of [player1Email, player2Email]) if (email) multi.zadd(RECENT_PLAYERS, at, email);
+    multi.zremrangebyrank(RECENT_PLAYERS, 0, -(RECENT_PLAYERS_MAX + 1));
+    await execMulti(multi);
 
     log('info', 'session_transition', { from: 'none', to: 'setup' });
     return { player1, player2 };
@@ -289,7 +299,19 @@ function createSessionManager(redis, config, log, hooks = {}) {
     return out;
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory };
+  async function getRecentPlayers() {
+    const flat = await redis.zrevrange(RECENT_PLAYERS, 0, -1, 'WITHSCORES');
+    const out = [];
+    for (let i = 0; i < flat.length; i += 2) out.push({ contact: flat[i], lastAt: Number(flat[i + 1]) });
+    return out;
+  }
+
+  async function clearRecentPlayers() {
+    await redis.del(RECENT_PLAYERS);
+    log('info', 'recent_players_cleared', {});
+  }
+
+  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers };
 }
 
-module.exports = { createSessionManager, execMulti };
+module.exports = { createSessionManager, execMulti, RECENT_PLAYERS_MAX };

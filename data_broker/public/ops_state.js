@@ -212,5 +212,12 @@
     return { groups: { central, coletor, jogo, nuvem }, lines };
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, QUEUE_STUCK_MS, STALE_MS };
+  // NEU-141: busca na lista de ultimos jogadores (parte do contato, sem caixa).
+  function filterRecentPlayers(list, query) {
+    const q = String(query == null ? '' : query).trim().toLowerCase();
+    const items = Array.isArray(list) ? list : [];
+    return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
+  }
+
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, QUEUE_STUCK_MS, STALE_MS };
 }));

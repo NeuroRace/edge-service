@@ -25,8 +25,12 @@ const REQUEUE_STATUS = { not_found: 404, not_retryable: 409 };
 // POST /api/dispatch/requeue (NEU-143). Exige Content-Type JSON: um formulario de outra
 // pagina aberta no navegador do operador nao consegue mandar isso sem preflight de CORS,
 // que o broker nao responde. Sem isso, qualquer site poderia disparar reenvios (CSRF).
+function isJsonRequest(req) {
+  return String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json');
+}
+
 function handleRequeue(req, res, dispatchAdmin, log) {
-  if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+  if (!isJsonRequest(req)) {
     sendJson(res, 415, { error: 'unsupported_media_type' });
     req.resume();
     return;
@@ -141,6 +145,35 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAd
 
     if (dispatchAdmin && req.method === 'POST' && req.url === '/api/dispatch/requeue') {
       handleRequeue(req, res, dispatchAdmin, log);
+      return;
+    }
+
+    // NEU-141: ultimos jogadores cadastrados (contato completo: o painel so abre no PC central).
+    if (session && req.method === 'GET' && req.url === '/api/players/recent') {
+      session
+        .getRecentPlayers()
+        .then((data) => sendJson(res, 200, data))
+        .catch((err) => {
+          log('error', 'api_recent_players_error', { error: err?.message ?? String(err) });
+          sendJson(res, 500, { error: 'internal_error' });
+        });
+      return;
+    }
+
+    // "Limpar lista" (NEU-141). Exige JSON pelo mesmo motivo do requeue (CSRF por formulario).
+    if (session && req.method === 'POST' && req.url === '/api/players/recent/clear') {
+      req.resume();
+      if (!isJsonRequest(req)) {
+        sendJson(res, 415, { error: 'unsupported_media_type' });
+        return;
+      }
+      session
+        .clearRecentPlayers()
+        .then(() => sendJson(res, 200, { ok: true }))
+        .catch((err) => {
+          log('error', 'api_recent_players_clear_error', { error: err?.message ?? String(err) });
+          sendJson(res, 500, { error: 'internal_error' });
+        });
       return;
     }
 

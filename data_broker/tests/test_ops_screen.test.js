@@ -34,6 +34,8 @@ test('test_OpsScreenServed_root_returns_html_with_strict_csp_and_three_blocks', 
     assert.match(res.body, /data-psl="1"/); assert.match(res.body, /data-gesture="2"/);
     assert.doesNotMatch(res.body, /id="clock"/);
     assert.doesNotMatch(res.body, /data-step="sent"/);
+    // NEU-141: ultimos jogadores com busca, botoes P1/P2 e limpar.
+    for (const sel of ['data-block="recent"', 'data-recent-search', 'data-recent-list', 'data-recent-clear']) assert.match(res.body, new RegExp(sel));
   } finally { server.close(); }
 });
 
