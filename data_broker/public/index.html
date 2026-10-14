@@ -9,8 +9,17 @@
 <body>
   <header class="top">
     <div class="brand"><span class="brand-neuro">NEURO</span><span class="brand-race">RACE</span> <span class="brand-sub">operação do estande</span></div>
-    <div class="top-right"><span class="mono" id="clock">--:--:--</span></div>
   </header>
+
+  <section class="strip" data-strip aria-label="Estado do estande">
+    <div class="balls">
+      <span class="ball" data-ball="central" data-level="unknown"><i class="dot"></i> Central <b class="mono" data-ball-word>—</b></span>
+      <span class="ball" data-ball="coletor" data-level="unknown"><i class="dot"></i> Coletor <b class="mono" data-ball-word>—</b></span>
+      <span class="ball" data-ball="jogo" data-level="unknown"><i class="dot"></i> Jogo <b class="mono" data-ball-word>—</b></span>
+      <span class="ball" data-ball="nuvem" data-level="unknown"><i class="dot"></i> Nuvem <b class="mono" data-ball-word>—</b></span>
+    </div>
+    <ul class="strip-lines mono" data-strip-lines aria-live="polite"></ul>
+  </section>
 
   <div class="banner" data-banner hidden role="alert" aria-live="assertive"><ul id="banner-list"></ul></div>
 
@@ -24,7 +33,7 @@
           <input id="email1" name="player1Email" type="email" autocomplete="off" spellcheck="false" placeholder="jogador@exemplo.com" inputmode="email">
           <div class="field-error mono" data-error="1" hidden></div>
           <ol class="steps mono" data-steps="1" aria-label="Etapas do jogador 1">
-            <li data-step="registered">Registrado</li><li data-step="racing">Correndo</li><li data-step="finished">Finalizada</li><li data-step="sent">Enviada</li>
+            <li data-step="registered">Registrado</li><li data-step="racing">Correndo</li><li data-step="finished">Terminou</li>
           </ol>
         </div>
         <div class="card" data-slot="2">
@@ -33,7 +42,7 @@
           <input id="email2" name="player2Email" type="email" autocomplete="off" spellcheck="false" placeholder="jogador@exemplo.com" inputmode="email">
           <div class="field-error mono" data-error="2" hidden></div>
           <ol class="steps mono" data-steps="2" aria-label="Etapas do jogador 2">
-            <li data-step="registered">Registrado</li><li data-step="racing">Correndo</li><li data-step="finished">Finalizada</li><li data-step="sent">Enviada</li>
+            <li data-step="registered">Registrado</li><li data-step="racing">Correndo</li><li data-step="finished">Terminou</li>
           </ol>
         </div>
         <div class="actions">
@@ -48,13 +57,25 @@
       <div class="signals">
         <div class="signal" data-signal="1">
           <div class="signal-head"><span class="slot">Jogador 1</span><span class="link mono" data-link="1"><i class="dot"></i> sem pacotes</span></div>
-          <div class="signal-body"><div class="attn"><span class="attn-num mono" data-attn="1">—</span><span class="attn-label">atenção</span><span class="quality mono" data-quality="1">contato: —</span></div>
-          <svg class="spark" viewBox="0 0 240 48" preserveAspectRatio="none" aria-hidden="true"><path data-spark="1" d=""></path></svg></div>
+          <div class="signal-body">
+            <div class="attn"><span class="attn-num mono" data-attn="1">—</span><span class="attn-label">atenção</span></div>
+            <svg class="spark" viewBox="0 0 240 48" preserveAspectRatio="none" aria-hidden="true"><path data-spark="1" d=""></path></svg>
+            <div class="attn"><span class="psl-num mono" data-psl="1" data-level="none">—</span><span class="attn-label">poor signal</span></div>
+            <svg class="spark spark-psl" viewBox="0 0 240 48" preserveAspectRatio="none" aria-hidden="true"><path data-spark-psl="1" d=""></path></svg>
+            <div class="attn"><span class="attn-num mono" data-fists="1">0</span><span class="attn-label">punhos/min</span></div>
+            <svg class="spark gesture" viewBox="0 0 240 24" preserveAspectRatio="none" aria-hidden="true"><g data-gesture="1"></g></svg>
+          </div>
         </div>
         <div class="signal" data-signal="2">
           <div class="signal-head"><span class="slot">Jogador 2</span><span class="link mono" data-link="2"><i class="dot"></i> sem pacotes</span></div>
-          <div class="signal-body"><div class="attn"><span class="attn-num mono" data-attn="2">—</span><span class="attn-label">atenção</span><span class="quality mono" data-quality="2">contato: —</span></div>
-          <svg class="spark" viewBox="0 0 240 48" preserveAspectRatio="none" aria-hidden="true"><path data-spark="2" d=""></path></svg></div>
+          <div class="signal-body">
+            <div class="attn"><span class="attn-num mono" data-attn="2">—</span><span class="attn-label">atenção</span></div>
+            <svg class="spark" viewBox="0 0 240 48" preserveAspectRatio="none" aria-hidden="true"><path data-spark="2" d=""></path></svg>
+            <div class="attn"><span class="psl-num mono" data-psl="2" data-level="none">—</span><span class="attn-label">poor signal</span></div>
+            <svg class="spark spark-psl" viewBox="0 0 240 48" preserveAspectRatio="none" aria-hidden="true"><path data-spark-psl="2" d=""></path></svg>
+            <div class="attn"><span class="attn-num mono" data-fists="2">0</span><span class="attn-label">punhos/min</span></div>
+            <svg class="spark gesture" viewBox="0 0 240 24" preserveAspectRatio="none" aria-hidden="true"><g data-gesture="2"></g></svg>
+          </div>
         </div>
       </div>
     </section>

@@ -28,6 +28,12 @@ test('test_OpsScreenServed_root_returns_html_with_strict_csp_and_three_blocks', 
     assert.match(csp, /default-src 'self'/); assert.match(csp, /connect-src 'self' ws: wss:/);
     for (const b of ['players', 'signal', 'cloud']) assert.match(res.body, new RegExp(`data-block="${b}"`));
     assert.match(res.body, /data-banner/);
+    // NEU-139: faixa de status, Poor Signal e gesto nos cards; sem relogio; sem etapa "Enviada".
+    assert.match(res.body, /data-strip/);
+    for (const g of ['central', 'coletor', 'jogo', 'nuvem']) assert.match(res.body, new RegExp(`data-ball="${g}"`));
+    assert.match(res.body, /data-psl="1"/); assert.match(res.body, /data-gesture="2"/);
+    assert.doesNotMatch(res.body, /id="clock"/);
+    assert.doesNotMatch(res.body, /data-step="sent"/);
   } finally { server.close(); }
 });
 

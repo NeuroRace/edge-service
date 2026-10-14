@@ -74,5 +74,21 @@ input[aria-invalid="true"] { border-color: var(--error); }
 .subhead { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--fg-strong); }
 .btn-small { font: inherit; font-size: 0.78rem; padding: 0.2rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-elev); color: var(--fg-strong); cursor: pointer; }
 .btn-small:hover { border-color: var(--fg-muted); } .btn-small:focus-visible { outline: 2px solid var(--fg-strong); outline-offset: 2px; } .btn-small[disabled] { opacity: 0.6; cursor: wait; }
+/* Faixa de status (NEU-139) */
+.strip { margin: 0 auto 1rem; max-width: 1100px; padding: 0.6rem 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.balls { display: flex; gap: 1.4rem; flex-wrap: wrap; }
+.ball { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--fg-strong); }
+.ball .dot { width: 12px; height: 12px; }
+.ball[data-level="ok"] .dot { background: var(--ok); } .ball[data-level="warn"] .dot { background: var(--warn); } .ball[data-level="down"] .dot { background: var(--error); }
+.ball b { font-weight: 500; font-size: 0.8rem; color: var(--fg-muted); }
+.ball[data-level="ok"] b { color: var(--ok); } .ball[data-level="warn"] b { color: var(--warn); } .ball[data-level="down"] b { color: var(--error); }
+.strip-lines { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.2rem; font-size: 0.82rem; color: var(--warn); }
+.strip-lines:empty { display: none; }
+/* Cards: Poor Signal, Sem dados e gesto (NEU-139) */
+.psl-num { font-size: 1.4rem; color: var(--fg-strong); line-height: 1; }
+.psl-num[data-level="good"] { color: var(--ok); } .psl-num[data-level="weak"] { color: var(--warn); }
+.psl-num[data-level="bad"], .attn-num[data-level="bad"] { color: var(--error); font-size: 1rem; }
+.spark-psl path { stroke: var(--warn); }
+.gesture { height: 24px; } .gesture rect { fill: var(--fg-strong); }
 @media (max-width: 720px) { .cards, .signals { grid-template-columns: 1fr; } .signal-body { grid-template-columns: 90px 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
