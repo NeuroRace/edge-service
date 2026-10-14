@@ -127,6 +127,10 @@ NEU-37: `race_id`, `player_email`, `telemetry_points`). O Edge é responsável p
 | `409` | Conflito idempotente (já existe) | Tratar como sucesso |
 | `429`, `5xx`, timeout, erro de rede | Falha **transitória** | Retentar com backoff |
 
+- A retentativa **não bloqueia a fila** (NEU-92): a corrida que falhou é reagendada em
+  `dispatch:retry` e as seguintes continuam sendo enviadas. A ordem entre corridas não é
+  garantida (cada envio é independente e idempotente por `idempotency_key`).
+
 - A Cloud deve responder `2xx` para **replays idempotentes** (mesmo `idempotency_key`),
   para que uma retentativa após um sucesso não-confirmado não gere erro nem duplicata.
 - Corpo de erro recomendado: `{ "error": "<code>", "message": "<humano>" }`.

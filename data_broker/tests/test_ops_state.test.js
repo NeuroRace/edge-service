@@ -80,3 +80,17 @@ test('test_OpsState_finished_flag_from_session_survives_reload_before_dispatch',
   assert.equal(S.cardState({ slot: 1, session: active, pending: null, raceEvents: {}, history: [] }), 'finished');
   assert.equal(S.cardState({ slot: 2, session: active, pending: null, raceEvents: {}, history: [] }), 'racing');
 });
+
+test('test_OpsState_queue_stuck_counts_retrying_races (NEU-92)', () => {
+  assert.equal(S.pendingCount({ queue: 1, retrying: 2 }), 3);
+  assert.equal(S.pendingCount({ queue: 1 }), 1, 'broker antigo sem retrying');
+  assert.equal(S.pendingCount(undefined), 0);
+  const list = S.alerts({
+    session: { status: 'none' },
+    health: { discardedRaces: 0, dispatcher: { enabled: true, counts: { queue: 0, processing: 0, retrying: 2, deadletter: 0 } } },
+    signals: {}, now: 100_000, queueSince: 50_000, prevDiscarded: 0,
+  });
+  const stuck = list.find((a) => a.code === 'queue_stuck');
+  assert.ok(stuck, 'nuvem fora: corridas reagendadas tambem contam como fila parada');
+  assert.match(stuck.text, /^2 corrida\(s\) aguardando envio/);
+});

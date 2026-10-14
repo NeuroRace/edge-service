@@ -33,14 +33,29 @@ function fetchSeq(steps) {
 function make(redis, fetchFn, log = () => {}) {
   return createDispatcher(redis, CONFIG, log, fetchFn, noSleep, fixedNow);
 }
+function makeClocked(redis, fetchFn) {
+  const clock = { t: fixedNow() };
+  return { clock, d: createDispatcher(redis, CONFIG, () => {}, fetchFn, noSleep, () => clock.t) };
+}
+
+// NEU-92: falha transitoria reagenda (dispatch:retry) em vez de retentar em linha.
+// Roda o dispatcher ate a fila e os reagendados esvaziarem, avancando o relogio.
+async function drain(d, redis, clock) {
+  for (let i = 0; i < 20; i += 1) {
+    await d.processOnce();
+    if ((await redis.llen(QUEUE)) === 0 && (await redis.zcard('dispatch:retry')) === 0) return;
+    clock.t += 60_000;
+  }
+  throw new Error('drain nao terminou');
+}
 async function deadLetters(redis) { return (await redis.lrange(DEADLETTER, 0, -1)).map((s) => JSON.parse(s)); }
 async function history(redis) { return (await redis.lrange(HISTORY, 0, -1)).map((s) => JSON.parse(s)); }
 
 test('test_DeadLetterKeepsRaw_exhausted_entry_carries_original_record', async () => {
   const redis = new FakeRedis(); const raw = JSON.stringify(record());
   await redis.rpush(QUEUE, raw);
-  const d = make(redis, fetchSeq([{ status: 500 }]));
-  assert.equal(await d.processOnce(), true);
+  const { d, clock } = makeClocked(redis, fetchSeq([{ status: 500 }]));
+  await drain(d, redis, clock);
   const [entry] = await deadLetters(redis);
   assert.equal(entry.reason, 'exhausted');
   assert.equal(entry.raw, raw, 'o payload original deve estar na entrada (requeue = RPUSH raw)');
@@ -89,8 +104,8 @@ test('test_DispatchHistory_success_appends_masked_entry', async () => {
 test('test_DispatchHistory_deadletter_appends_entry_with_reason', async () => {
   const redis = new FakeRedis();
   await redis.rpush(QUEUE, JSON.stringify(record({ jobId: 'j-2', playerId: 2 })));
-  const d = make(redis, fetchSeq([{ throw: true }]));
-  await d.processOnce();
+  const { d, clock } = makeClocked(redis, fetchSeq([{ throw: true }]));
+  await drain(d, redis, clock);
   const [h] = await history(redis);
   assert.equal(h.status, 'deadletter'); assert.equal(h.reason, 'exhausted'); assert.equal(h.jobId, 'j-2'); assert.equal(h.playerId, 2); assert.equal(h.httpStatus, null); assert.equal(h.attempts, 2);
 });
@@ -118,16 +133,18 @@ test('test_DispatcherState_exposes_target_lastPoll_and_counts', async () => {
   assert.equal(s.lastPollAt, 1_700_000_000_000);
   assert.equal(s.lastSuccessAt, 1_700_000_000_000);
   assert.equal(s.inFlightJobId, null);
-  assert.deepEqual(s.counts, { queue: 0, processing: 0, deadletter: 1 });
+  assert.deepEqual(s.counts, { queue: 0, processing: 0, retrying: 0, deadletter: 1 });
 });
 
 test('test_DispatcherState_records_lastErrorAt_on_deadletter', async () => {
   const redis = new FakeRedis();
   await redis.rpush(QUEUE, JSON.stringify(record()));
-  const d = make(redis, fetchSeq([{ status: 500 }]));
+  const { d, clock } = makeClocked(redis, fetchSeq([{ status: 500 }]));
   await d.processOnce();
+  assert.equal(d.getState().lastErrorAt, 1_700_000_000_000, 'falha transitoria reagendada ja marca o erro');
+  await drain(d, redis, clock);
   const s = d.getState();
-  assert.equal(s.lastErrorAt, 1_700_000_000_000); assert.equal(s.lastSuccessAt, null); assert.equal(s.counts.deadletter, 1);
+  assert.equal(s.lastErrorAt, clock.t); assert.equal(s.lastSuccessAt, null); assert.equal(s.counts.deadletter, 1);
 });
 
 test('test_ObservabilityNeverBlocks_history_failure_does_not_break_success_path', async () => {

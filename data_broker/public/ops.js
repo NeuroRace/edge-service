@@ -30,7 +30,7 @@
     if (health.status === 'fulfilled') {
       st.health = health.value;
       if (st.prevDiscarded === null) st.prevDiscarded = Number(st.health.discardedRaces || 0);
-      const q = Number((st.health.dispatcher && st.health.dispatcher.counts && st.health.dispatcher.counts.queue) || 0);
+      const q = S.pendingCount(st.health.dispatcher && st.health.dispatcher.counts);
       if (q > 0 && st.queueSince === null) st.queueSince = Date.now();
       if (q === 0) st.queueSince = null;
     }
@@ -143,9 +143,10 @@
       counts.textContent = `esperando ${o.waiting} · enviando ${o.sending} · falharam ${o.failed} · último envio ok ${last} · descartadas ${h.discardedRaces ?? 0}`;
     } else {
       const c = d.counts || {};
-      counts.textContent = `fila ${c.queue ?? '—'} · enviando ${c.processing ?? '—'} · falhas ${c.deadletter ?? '—'} · descartadas ${h.discardedRaces ?? 0}`;
+      counts.textContent = `fila ${c.queue ?? '—'} · nova tentativa ${c.retrying ?? '—'} · enviando ${c.processing ?? '—'} · falhas ${c.deadletter ?? '—'} · descartadas ${h.discardedRaces ?? 0}`;
     }
     renderFailed();
+
     // Dados do Redis/nuvem NUNCA entram como HTML (achado do critico codex): so textContent.
     const tbody = $('[data-history]'); const rows = (st.history || []).slice(0, 10);
     tbody.replaceChildren();

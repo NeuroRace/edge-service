@@ -49,6 +49,22 @@ async function seedQueue(redis, rec) {
   await redis.rpush(QUEUE, JSON.stringify(rec));
 }
 
+function clocked(redis, fetchFn, config = CONFIG) {
+  const clock = { t: 1_000 };
+  return { clock, d: createDispatcher(redis, config, () => {}, fetchFn, noSleep, () => clock.t) };
+}
+
+// NEU-92: falha transitoria reagenda (dispatch:retry) em vez de retentar em linha.
+// Roda o dispatcher ate a fila e os reagendados esvaziarem, avancando o relogio.
+async function drain(d, redis, clock) {
+  for (let i = 0; i < 20; i += 1) {
+    await d.processOnce();
+    if ((await redis.llen(QUEUE)) === 0 && (await redis.zcard('dispatch:retry')) === 0) return;
+    clock.t += 60_000;
+  }
+  throw new Error('drain nao terminou');
+}
+
 test('classifyStatus: 2xx sucesso, 429/5xx transitorio, 4xx permanente', () => {
   assert.equal(classifyStatus(200), 'success');
   assert.equal(classifyStatus(201), 'success');
@@ -116,9 +132,10 @@ test('500 depois 200: retenta e sucede', async () => {
   const redis = new FakeRedis();
   await seedQueue(redis, record());
   const fetchFn = fetchSeq([{ status: 500, body: {} }, { status: 200, body: { status: 'created' } }]);
-  const d = createDispatcher(redis, CONFIG, () => {}, fetchFn, noSleep);
+  const { d, clock } = clocked(redis, fetchFn);
 
   assert.equal(await d.processOnce(), true);
+  await drain(d, redis, clock);
   assert.equal(fetchFn.calls.length, 2);
   assert.equal(await redis.llen(DEADLETTER), 0);
   assert.equal(await redis.llen(PROCESSING), 0);
@@ -128,9 +145,9 @@ test('500 sempre: esgota maxAttempts -> dead-letter exhausted', async () => {
   const redis = new FakeRedis();
   await seedQueue(redis, record());
   const fetchFn = fetchSeq([{ status: 500, body: {} }]);
-  const d = createDispatcher(redis, CONFIG, () => {}, fetchFn, noSleep);
+  const { d, clock } = clocked(redis, fetchFn);
 
-  await d.processOnce();
+  await drain(d, redis, clock);
   assert.equal(fetchFn.calls.length, 3); // == dispatchMaxAttempts
   const dl = JSON.parse((await redis.lrange(DEADLETTER, 0, -1))[0]);
   assert.equal(dl.reason, 'exhausted');
@@ -142,8 +159,9 @@ test('erro de rede depois 200: retenta e sucede', async () => {
   const redis = new FakeRedis();
   await seedQueue(redis, record());
   const fetchFn = fetchSeq([{ throw: true }, { status: 200, body: { status: 'created' } }]);
-  const d = createDispatcher(redis, CONFIG, () => {}, fetchFn, noSleep);
+  const { d, clock } = clocked(redis, fetchFn);
   assert.equal(await d.processOnce(), true);
+  await drain(d, redis, clock);
   assert.equal(fetchFn.calls.length, 2);
 });
 
@@ -196,8 +214,8 @@ test('429 transitorio: retenta e nao vai para dead-letter', async () => {
   const redis = new FakeRedis();
   await seedQueue(redis, record());
   const fetchFn = fetchSeq([{ status: 429 }, { status: 200, body: { status: 'created' } }]);
-  const d = createDispatcher(redis, CONFIG, () => {}, fetchFn, noSleep);
-  await d.processOnce();
+  const { d, clock } = clocked(redis, fetchFn);
+  await drain(d, redis, clock);
   assert.equal(fetchFn.calls.length, 2);
   assert.equal(await redis.llen(DEADLETTER), 0);
   assert.equal(await redis.llen(PROCESSING), 0);

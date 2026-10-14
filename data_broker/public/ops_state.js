@@ -57,6 +57,12 @@
 
   const QUEUE_STUCK_MS = 30000;
 
+  // Corridas aguardando envio: na fila + reagendadas apos falha temporaria (NEU-92).
+  // Durante uma queda da nuvem elas ficam em `retrying`, nao em `queue`.
+  function pendingCount(counts) {
+    return Number((counts && counts.queue) || 0) + Number((counts && counts.retrying) || 0);
+  }
+
   // NEU-143: motivo de uma corrida que nao subiu (entrada de /api/dispatch/overview).
   function failureText(f) {
     const e = f || {};
@@ -100,8 +106,9 @@
           : disp.reason === 'dispatcher_fatal' ? 'o envio parou por erro fatal' : (disp.reason || 'motivo desconhecido');
       out.push({ level: 'error', code: 'cloud_disabled', text: `Nuvem DESLIGADA — corridas ficam na fila e não aparecem no site (${why}).` });
     }
-    if (Number(counts.queue) > 0 && queueSince != null && now - queueSince > QUEUE_STUCK_MS) {
-      out.push({ level: 'warn', code: 'queue_stuck', text: `${counts.queue} corrida(s) na fila há mais de 30 s — internet ou nuvem lenta. Nada se perde; elas sobem quando voltar.` });
+    const pendingRaces = pendingCount(counts);
+    if (pendingRaces > 0 && queueSince != null && now - queueSince > QUEUE_STUCK_MS) {
+      out.push({ level: 'warn', code: 'queue_stuck', text: `${pendingRaces} corrida(s) aguardando envio há mais de 30 s — internet ou nuvem lenta. Nada se perde; elas sobem quando voltar.` });
     }
     const failed = Number(overview && overview.counts && overview.counts.failed) || 0;
     if (failed > 0) {
@@ -130,5 +137,5 @@
     return out;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, QUEUE_STUCK_MS };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, QUEUE_STUCK_MS };
 }));
