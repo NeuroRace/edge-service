@@ -181,6 +181,8 @@
     const t = Number.isFinite(Number(status.now)) ? Number(status.now) : now;
     const pieces = status.pieces || {};
     const lines = [];
+    // NEU-142: central e coletor com codigos diferentes vem primeiro (causa de muita coisa).
+    lines.push(...versionWarnings(pieces));
     const states = (keys) => keys.map((k) => [k, pieceState(pieces[k], t)]);
 
     const redisState = status.redis && status.redis.status === 'ready' ? 'ok' : 'down';
@@ -212,6 +214,73 @@
     return { groups: { central, coletor, jogo, nuvem }, lines };
   }
 
+  // ---------- NEU-142: Diagnostico ----------
+  const DIAG_WORD = { ok: 'OK', stale: 'Sem notícia', down: 'Fora' };
+  const CONN_LABEL = [['acquisition-p1', 'acquisition-p1'], ['gesture-p1', 'gesture-p1'], ['acquisition-p2', 'acquisition-p2'], ['gesture-p2', 'gesture-p2'], ['panel', 'painel'], ['test-client', 'test-client'], ['unidentified', 'não identificado (jogo)']];
+
+  function ago(ms) {
+    return ms === null || ms === undefined || !Number.isFinite(ms) ? '—' : `há ${Math.max(0, Math.round(ms / 1000))} s`;
+  }
+
+  function versionLabel(key, meta) {
+    if (key.startsWith('gesture') && meta.commit) return `${meta.branch || '?'} · ${meta.commit}`;
+    return meta.version ? `código ${meta.version}` : 'versão desconhecida';
+  }
+
+  function versionWarnings(pieces) {
+    const out = [];
+    for (const role of ['acquisition', 'gesture']) {
+      const v1 = pieces[`${role}-p1`] && pieces[`${role}-p1`].meta && pieces[`${role}-p1`].meta.version;
+      const v2 = pieces[`${role}-p2`] && pieces[`${role}-p2`].meta && pieces[`${role}-p2`].meta.version;
+      if (v1 && v2 && v1 !== v2) out.push(`versões diferentes entre central e coletor: ${role} (central ${v1} · coletor ${v2}) · atualize o coletor (git pull) e reabra as peças`);
+    }
+    return out;
+  }
+
+  function diagnostics({ status }) {
+    if (!status) return { pcs: [], versionWarnings: [] };
+    const t = Number(status.now);
+    const pieces = status.pieces || {};
+    const dash = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
+    function ourPiece(key) {
+      const p = pieces[key] || {}; const meta = p.meta || {};
+      const st = pieceState(p, t);
+      const age = p.lastEventAt === null || p.lastEventAt === undefined ? null : t - p.lastEventAt;
+      const details = key.startsWith('acquisition')
+        ? [['fonte', dash(meta.source)], ['ThinkGear', meta.eegHost ? `${meta.eegHost}:${dash(meta.acqPort)}` : '—'], ['Poor Signal', dash(p.poorSignalLevel)], ['atenção', dash(p.attention)], ['último dado', ago(age)]]
+        : [['câmera', meta.camera === undefined ? '—' : `Câmera ${Number(meta.camera) + 1}`], ['mão vista', p.handSeen === null || p.handSeen === undefined ? '—' : p.handSeen ? 'sim' : 'não'], ['última notícia', ago(age)]];
+      return { key, level: st, word: DIAG_WORD[st], version: versionLabel(key, meta), line: st === 'ok' ? null : pieceLine(key, st), details };
+    }
+    const conns = status.connections || {};
+    const connText = CONN_LABEL.filter(([k]) => conns[k]).map(([k, label]) => `${label} ×${conns[k]}`).join(' · ') || 'ninguém';
+    const uptime = status.broker && Number(status.broker.uptimeSeconds);
+    const broker = {
+      key: 'broker', level: 'ok', word: DIAG_WORD.ok, line: null,
+      version: status.broker && status.broker.version ? `código ${status.broker.version}` : 'versão desconhecida',
+      details: [['conectados', connText], ['no ar há', Number.isFinite(uptime) ? `${Math.floor(uptime / 60)} min` : '—']],
+    };
+    const redisOk = status.redis && status.redis.status === 'ready';
+    const redis = {
+      key: 'redis', level: redisOk ? 'ok' : 'down', word: redisOk ? DIAG_WORD.ok : DIAG_WORD.down, version: '—',
+      line: redisOk ? null : 'redis fora · reinicie o redis no PC central (a fila fica guardada)',
+      details: [['estado', dash(status.redis && status.redis.status)]],
+    };
+    const game = status.game || {};
+    const gameOk = Number(game.connections) > 0;
+    const jogo = {
+      key: 'jogo', level: gameOk ? 'ok' : 'down', word: gameOk ? DIAG_WORD.ok : DIAG_WORD.down, version: '—',
+      line: gameOk ? null : 'jogo não conectado · abra o jogo no PC central',
+      details: [['conexões', String(Number(game.connections) || 0)], ['últimos eventos', (game.recentEvents || []).map((e) => `${e.event} ${ago(t - e.at)}`).join(' · ') || '—']],
+    };
+    return {
+      pcs: [
+        { name: 'PC CENTRAL', pieces: [broker, redis, ourPiece('acquisition-p1'), ourPiece('gesture-p1'), jogo] },
+        { name: 'PC COLETOR', pieces: [ourPiece('acquisition-p2'), ourPiece('gesture-p2')] },
+      ],
+      versionWarnings: versionWarnings(pieces),
+    };
+  }
+
   // NEU-141: busca na lista de ultimos jogadores (parte do contato, sem caixa).
   function filterRecentPlayers(list, query) {
     const q = String(query == null ? '' : query).trim().toLowerCase();
@@ -219,5 +288,5 @@
     return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, QUEUE_STUCK_MS, STALE_MS };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS };
 }));
