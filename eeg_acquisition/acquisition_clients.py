@@ -2,6 +2,7 @@ import socket
 import socketio
 
 from acquisition_config import AcquisitionConfig
+from code_version import code_version
 
 
 def create_eeg_client(config: AcquisitionConfig):
@@ -14,8 +15,9 @@ def create_eeg_client(config: AcquisitionConfig):
 
 
 def broker_auth(config: AcquisitionConfig):
-    # NEU-139: o broker reconhece a peca pelo auth do socket.io (faixa de status do painel).
-    return {"role": "acquisition", "player": config.player_id}
+    # NEU-139/142: o broker reconhece a peca e mostra versao e ThinkGear no Diagnostico.
+    return {"role": "acquisition", "player": config.player_id, "version": code_version(),
+            "source": config.source, "eegHost": config.eeg_host, "acqPort": config.acq_port}
 
 
 def create_broker_client(config: AcquisitionConfig):

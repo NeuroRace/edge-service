@@ -69,6 +69,13 @@ class GestureBrokerClientTests(unittest.TestCase):
         self.assertFalse(client.send_event("gestureStatus", {"player": 2}))
         self.assertLess(time.monotonic() - started, 0.1)
 
+    def test_meta_goes_into_auth(self):
+        clock, sio = FakeClock(), FakeSio(fail=False)
+        client = WebSocketBrokerClient("http://x:3000", 2, meta={"version": "abc1234", "camera": 0, "commit": None},
+                                       client_factory=lambda: sio, clock=clock, spawn=lambda fn: fn())
+        client.connect_to_broker()
+        self.assertEqual(sio.connect_calls[0][1]["auth"], {"role": "gesture", "player": 2, "version": "abc1234", "camera": 0})
+
     def test_status_ticker_fires_immediately_then_every_interval(self):
         clock = FakeClock()
         ticker = StatusTicker(interval_s=2.0, clock=clock)

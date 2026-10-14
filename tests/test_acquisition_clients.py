@@ -19,14 +19,17 @@ def make_config(player_id=2):
 
 
 class BrokerAuthTests(unittest.TestCase):
-    def test_broker_auth_identifies_acquisition_and_player(self):
-        self.assertEqual(acquisition_clients.broker_auth(make_config(2)), {"role": "acquisition", "player": 2})
+    def test_broker_auth_identifies_acquisition_player_and_metadata(self):
+        auth = acquisition_clients.broker_auth(make_config(2))
+        self.assertEqual({k: auth[k] for k in ("role", "player", "source", "eegHost", "acqPort")},
+                         {"role": "acquisition", "player": 2, "source": "real", "eegHost": "127.0.0.1", "acqPort": 13854})
+        self.assertRegex(auth["version"], r"^[0-9a-f]{7}$")
 
     def test_create_broker_client_sends_auth_on_connect(self):
         with mock.patch.object(acquisition_clients.socketio, "Client") as client_cls:
             acquisition_clients.create_broker_client(make_config(1))
         _, kwargs = client_cls.return_value.connect.call_args
-        self.assertEqual(kwargs["auth"], {"role": "acquisition", "player": 1})
+        self.assertEqual((kwargs["auth"]["role"], kwargs["auth"]["player"]), ("acquisition", 1))
 
 
 if __name__ == "__main__":
