@@ -53,3 +53,4 @@ jobs:
       - run: docker compose -f docker-compose.yml config
       - run: docker compose -f docker-compose.collector.yml config
       - run: scripts/validate-compose-banca.sh
+      - run: scripts/validate-compose-ports.sh

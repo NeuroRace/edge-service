@@ -1,0 +1,10 @@
+# PC central do estande (NEU-138): abre o broker tambem no cabo ate o PC coletor.
+# Uso: docker compose -f docker-compose.yml -f docker-compose.central.yml --profile <perfil> up -d
+#
+# CENTRAL_IP e o IP fixo do central no cabo (padrao 192.168.50.1; ver docs/neurosky-ensaio-runbook.md).
+# Se o PC nao tiver esse IP, o broker NAO sobe ("can't bind on the specified endpoint"):
+# configure o IP do cabo antes. O Wi-Fi do evento continua sem acesso ao broker e ao Redis.
+services:
+  broker:
+    ports:
+      - "${CENTRAL_IP:-192.168.50.1}:3000:3000"

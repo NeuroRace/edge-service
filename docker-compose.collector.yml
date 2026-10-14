@@ -7,7 +7,7 @@ services:
       PACKET_INTERVAL: 1.0
     command: python simulator.py
     ports:
-      - "13854:13854"
+      - "127.0.0.1:13854:13854"
     profiles: ['sim-dual']
     
   acquisition-b:
@@ -17,7 +17,8 @@ services:
     environment:
       PLAYER_ID: 2
       ACQ_PORT: 13854
-      BROKER_URL: http://192.168.15.10:3000
+      # IP do PC central no cabo (NEU-138): o broker nao responde pelo Wi-Fi do evento.
+      BROKER_URL: http://${CENTRAL_IP:-192.168.50.1}:3000
       POOR_SIGNAL_LEVEL_THRESHOLD: 0
       # EEG_HOST: simulator-b
       EEG_HOST: host.docker.internal

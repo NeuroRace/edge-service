@@ -15,11 +15,58 @@ const STATIC = {
 };
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 
+function sendJson(res, status, body) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
+const REQUEUE_STATUS = { not_found: 404, not_retryable: 409 };
+
+// POST /api/dispatch/requeue (NEU-143). Exige Content-Type JSON: um formulario de outra
+// pagina aberta no navegador do operador nao consegue mandar isso sem preflight de CORS,
+// que o broker nao responde. Sem isso, qualquer site poderia disparar reenvios (CSRF).
+function handleRequeue(req, res, dispatchAdmin, log) {
+  if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+    sendJson(res, 415, { error: 'unsupported_media_type' });
+    req.resume();
+    return;
+  }
+  let body = '';
+  let aborted = false;
+  req.on('data', (chunk) => {
+    if (aborted) return;
+    body += chunk;
+    if (body.length > MAX_BODY_BYTES) {
+      aborted = true;
+      sendJson(res, 413, { error: 'payload_too_large' });
+      req.destroy();
+    }
+  });
+  req.on('end', async () => {
+    if (aborted) return;
+    let data;
+    try { data = JSON.parse(body); } catch { sendJson(res, 400, { error: 'invalid_json' }); return; }
+    const jobId = data && data.jobId;
+    if (typeof jobId !== 'string' || jobId === '' || jobId.length > 200) {
+      sendJson(res, 400, { error: 'invalid_job_id' });
+      return;
+    }
+    try {
+      const result = await dispatchAdmin.requeue(jobId);
+      sendJson(res, result.ok ? 200 : REQUEUE_STATUS[result.error] || 500, result);
+    } catch (err) {
+      log('error', 'api_dispatch_requeue_error', { jobId, error: err?.message ?? String(err) });
+      sendJson(res, 500, { error: 'internal_error' });
+    }
+  });
+}
+
 // `getHealthSnapshot` (obrigatorio) alimenta GET /health.
 // `session` e `log` sao opcionais: quando `session` esta presente, expoe os
 // endpoints de persistencia (POST /api/players, GET /api/session/current,
 // GET /api/dispatch/history).
-function createHttpServer(getHealthSnapshot, session, log = () => {}) {
+// `dispatchAdmin` (opcional, NEU-143): GET /api/dispatch/overview e POST /api/dispatch/requeue.
+function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAdmin = null) {
   return http.createServer((req, res) => {
     const urlPath = String(req.url || '').split('?')[0];
     if (req.method === 'GET' && Object.prototype.hasOwnProperty.call(STATIC, urlPath)) {
@@ -71,6 +118,22 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'internal_error' }));
         });
+      return;
+    }
+
+    if (dispatchAdmin && req.method === 'GET' && req.url === '/api/dispatch/overview') {
+      dispatchAdmin
+        .overview()
+        .then((data) => sendJson(res, 200, data))
+        .catch((err) => {
+          log('error', 'api_dispatch_overview_error', { error: err?.message ?? String(err) });
+          sendJson(res, 500, { error: 'internal_error' });
+        });
+      return;
+    }
+
+    if (dispatchAdmin && req.method === 'POST' && req.url === '/api/dispatch/requeue') {
+      handleRequeue(req, res, dispatchAdmin, log);
       return;
     }
 
