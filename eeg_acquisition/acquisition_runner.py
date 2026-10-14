@@ -3,10 +3,11 @@ import socketio
 import time
 import traceback
 
-from acquisition_clients import close_connections, create_broker_client, create_eeg_client
+from acquisition_clients import close_connections, create_broker_client, create_eeg_client, source_handler
 from acquisition_config import AcquisitionConfig
 from acquisition_core import compute_retry_delay_seconds
 from acquisition_pipeline import RecoverableAcquisitionError, stream_packets
+from source_switch import SourceSwitch
 
 
 # NEU-151: de quanto em quanto tempo a peca diz ao broker como esta o EEG. Mesmo
@@ -50,17 +51,18 @@ def sleep_reporting_status(sio, config: AcquisitionConfig, delay_seconds, last_e
     while remaining > 0:
         emit_eeg_status(sio, config, "connecting", last_error)
         step = min(EEG_STATUS_INTERVAL_SECONDS, remaining)
-        sleep(step)
+        if sleep(step):
+            return  # NEU-86: acordou por troca de fonte; o laco abre o leitor novo ja
         remaining -= step
 
 
-def connect_broker_with_retry(config: AcquisitionConfig, log, sleep=time.sleep):
+def connect_broker_with_retry(config: AcquisitionConfig, log, sleep=time.sleep, on_set_source=None):
     """O broker e a primeira conexao e nao depende do EEG (NEU-151)."""
     attempt = 0
     while True:
         try:
             log.info("connecting_broker", attempt=attempt + 1, brokerUrl=config.broker_url)
-            sio = create_broker_client(config)
+            sio = create_broker_client(config, on_set_source=on_set_source)
             log.info("broker_connected", brokerUrl=config.broker_url)
             return sio
         except socketio.exceptions.ConnectionError as exc:
@@ -81,7 +83,9 @@ def connect_broker_with_retry(config: AcquisitionConfig, log, sleep=time.sleep):
             sleep(delay_seconds)
 
 
-def run_acquisition_service(config: AcquisitionConfig, log):
+def run_acquisition_service(config: AcquisitionConfig, log, switch=None):
+    # NEU-86: a fonte (NeuroSky | Bot) vem do painel pelo setSource; comeca em NeuroSky.
+    switch = switch or SourceSwitch()
     log.info(
         "acquisition_started",
         playerId=config.player_id,
@@ -99,21 +103,29 @@ def run_acquisition_service(config: AcquisitionConfig, log):
         # Antes o EEG vinha antes, e com o ThinkGear fechado a peca nem chegava a
         # aparecer no /api/status — indistinguivel, para o operador, de container
         # parado. A reconexao do proprio socket.io cuida de quedas do broker.
-        sio = connect_broker_with_retry(config, log)
+        sio = connect_broker_with_retry(config, log, on_set_source=source_handler(switch, log))
 
         while True:
             client = None
+            # Troca pedida durante a espera do backoff: a proxima tentativa e do leitor novo.
+            if switch.take_switched():
+                attempt = 0
 
             try:
                 emit_eeg_status(sio, config, "connecting")
-                log.info("connecting_eeg_source", attempt=attempt + 1)
-                client = create_eeg_client(config)
-                log.info("eeg_source_connected", eegHost=config.eeg_host, acqPort=config.acq_port)
+                log.info("connecting_eeg_source", attempt=attempt + 1, mode=switch.mode)
+                client = create_eeg_client(config, switch)
+                log.info("eeg_source_connected", mode=switch.mode, eegHost=config.eeg_host, acqPort=config.acq_port)
                 emit_eeg_status(sio, config, "connected")
 
                 attempt = 0
-                stream_packets(client=client, sio=sio, config=config, log=log)
+                stream_packets(client=client, sio=sio, config=switch.config_for(config), log=log)
             except (RecoverableAcquisitionError, socket.error) as exc:
+                # NEU-86: a queda provocada pela troca de fonte nao e falha. Sem backoff.
+                if switch.take_switched():
+                    log.info("eeg_source_switched", mode=switch.mode)
+                    attempt = 0
+                    continue
                 attempt += 1
                 if should_stop_retrying(attempt, config):
                     raise
@@ -130,7 +142,7 @@ def run_acquisition_service(config: AcquisitionConfig, log):
                     attempt=attempt,
                 )
                 # So o cliente do EEG cai aqui; o broker segue conectado, avisando.
-                sleep_reporting_status(sio, config, delay_seconds, exc)
+                sleep_reporting_status(sio, config, delay_seconds, exc, sleep=switch.wait)
             finally:
                 if client:
                     client.close()
