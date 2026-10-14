@@ -90,10 +90,12 @@ netsh interface portproxy delete v6tov4 listenaddress=::1 listenport=3000
 ```bash
 cd edge-service
 docker compose --profile live config | grep API_URL          # tem que sair vazio no ensaio
-docker compose --profile live up -d redis broker simulator-b acquisition-b
+docker compose -f docker-compose.yml -f docker-compose.central.yml --profile live up -d redis broker simulator-b acquisition-b
 curl -s localhost:3000/health                                # status ok
 ```
-- Isso sobe o broker com o **jogador 2 como bot**. Para 2 NeuroSkys reais (um por PC-JOGO), use só `docker compose up -d redis broker`.
+- **O broker só responde no próprio PC e no cabo** (`192.168.50.1`), nunca pelo Wi-Fi do evento (NEU-138). Por isso o `docker-compose.central.yml`: sem ele, o outro PC não alcança o broker. Se o IP do cabo não estiver configurado (seção 3), o broker não sobe e o erro diz `can't bind on the specified endpoint`.
+- Se aparecer `bind: Only one usage of each socket address` em `[::1]:3000`, rode o mesmo `up` de novo (visto 1 vez, na primeira troca para esta configuração).
+- Isso sobe o broker com o **jogador 2 como bot**. Para 2 NeuroSkys reais (um por PC-JOGO), use só `docker compose -f docker-compose.yml -f docker-compose.central.yml up -d redis broker`.
 - **Não suba o `acquisition-a` no PC-PAINEL**: ele tentaria ler um NeuroSky que não está nesse PC. Se já estiver rodando: `docker compose --profile live stop acquisition-a`.
 - Painel do operador: **http://localhost:3000**.
 
