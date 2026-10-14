@@ -9,6 +9,10 @@
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+  // NEU-86: fonte e camera ficam travadas durante a corrida, mas so ate 10 min depois
+  // da largada: a sessao nunca expira (L3), e uma corrida esquecida travaria para sempre.
+  const RACE_LOCK_MS = 10 * 60 * 1000;
+
   function normalizeEmail(value) {
     return String(value == null ? '' : value).trim().toLowerCase();
   }
@@ -295,5 +299,5 @@
     return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS };
 }));
