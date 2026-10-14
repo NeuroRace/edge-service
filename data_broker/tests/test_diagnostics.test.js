@@ -36,7 +36,7 @@ test('grupos PC CENTRAL e PC COLETOR com as pecas na ordem', () => {
 test('acquisition: estado, versao por hash e detalhes', () => {
   const p = find(S.diagnostics({ status: status() }), 'acquisition-p1');
   assert.deepEqual([p.level, p.word, p.version, p.line], ['ok', 'OK', 'código aaaaaaa', null]);
-  assert.deepEqual(p.details, [['fonte', 'real'], ['ThinkGear', 'host.docker.internal:13854'], ['Poor Signal', '26'], ['atenção', '61'], ['último dado', 'há 2 s']]);
+  assert.deepEqual(p.details, [['fonte', 'real'], ['ThinkGear', 'host.docker.internal:13854'], ['EEG', '—'], ['último erro', '—'], ['Poor Signal', '26'], ['atenção', '61'], ['último dado', 'há 2 s']]);
 });
 
 test('gesture: commit quando houver, senao hash; camera N = indice + 1', () => {
@@ -50,8 +50,21 @@ test('peca fora: palavra, linha de o que fazer e versao desconhecida', () => {
   const st = status(); st.pieces['acquisition-p2'] = off();
   const p = find(S.diagnostics({ status: st }), 'acquisition-p2');
   assert.deepEqual([p.level, p.word, p.version], ['down', 'Fora', 'versão desconhecida']);
-  assert.match(p.line, /^acquisition-p2 sem conexão · confira o ThinkGear/);
+  // NEU-151: peca fora agora e so peca fora — o ThinkGear ganhou linha propria.
+  assert.equal(p.line, 'acquisition-p2 desligado · suba as peças do PC coletor');
   assert.deepEqual(p.details[1], ['ThinkGear', '—']);
+});
+
+// NEU-151: a peca de pe com o EEG fora. Antes isso nem chegava ao painel, porque a
+// acquisition so conectava no broker depois de conectar no EEG.
+test('ThinkGear fora: peca conectada, EEG conectando, com o ultimo erro a vista', () => {
+  const st = status();
+  st.pieces['acquisition-p2'] = piece({ eeg: 'connecting', lastError: 'Connection refused', meta: {} });
+  const p = find(S.diagnostics({ status: st }), 'acquisition-p2');
+  assert.deepEqual([p.level, p.word], ['eeg_down', 'ThinkGear fora']);
+  assert.equal(p.line, 'ThinkGear do P2 fechado · abra o ThinkGear Connector no PC coletor');
+  assert.deepEqual(p.details[2], ['EEG', 'conectando']);
+  assert.deepEqual(p.details[3], ['último erro', 'Connection refused']);
 });
 
 test('sem noticia ha mais de 10 s: Sem notícia', () => {

@@ -149,8 +149,13 @@
   }
 
   // Sem noticia ha mais de STALE_MS (ou nunca) nao e 'ok'. `now` = relogio do broker.
+  //
+  // NEU-151: 'eeg_down' e a peca VIVA com o EEG fora. Ela manda `acquisitionStatus`
+  // a cada 2 s, entao o `lastEventAt` fica fresco e ela passaria por 'ok' sem este
+  // ramo — operador vendo verde e nenhum dado de EEG chegando.
   function pieceState(piece, now) {
     if (!piece || !piece.connected) return 'down';
+    if (piece.eeg === 'connecting') return 'eeg_down';
     if (piece.lastEventAt === null || piece.lastEventAt === undefined || now - piece.lastEventAt > STALE_MS) return 'stale';
     return 'ok';
   }
@@ -159,11 +164,11 @@
     const pc = PIECE_PC[key];
     const player = key.slice(-2).toUpperCase();
     if (key.startsWith('acquisition')) {
-      // A acquisition so conecta no broker depois de conectar no EEG (acquisition_runner): sem
-      // conexao pode ser ThinkGear/fone fora OU a peca caida. A mais provavel vem primeiro.
-      return state === 'down'
-        ? `${key} sem conexão · confira o ThinkGear e o fone do ${player} no ${pc} (ou suba as peças)`
-        : `${key} sem dados · confira o fone do ${player} no ${pc}`;
+      // NEU-151: os tres casos agora se distinguem, porque a acquisition conecta no
+      // broker ANTES do EEG e segue conectada quando o EEG cai.
+      if (state === 'down') return `${key} desligado · suba as peças do ${pc}`;
+      if (state === 'eeg_down') return `ThinkGear do ${player} fechado · abra o ThinkGear Connector no ${pc}`;
+      return `${key} sem dados · confira o fone do ${player} no ${pc}`;
     }
     return state === 'down' ? `${key} desligado · abra o detector de gesto no ${pc}` : `${key} sem notícia · reinicie o detector de gesto no ${pc}`;
   }
@@ -215,7 +220,7 @@
   }
 
   // ---------- NEU-142: Diagnostico ----------
-  const DIAG_WORD = { ok: 'OK', stale: 'Sem notícia', down: 'Fora' };
+  const DIAG_WORD = { ok: 'OK', stale: 'Sem notícia', down: 'Fora', eeg_down: 'ThinkGear fora' };
   const CONN_LABEL = [['acquisition-p1', 'acquisition-p1'], ['gesture-p1', 'gesture-p1'], ['acquisition-p2', 'acquisition-p2'], ['gesture-p2', 'gesture-p2'], ['panel', 'painel'], ['test-client', 'test-client'], ['unidentified', 'não identificado (jogo)']];
 
   function ago(ms) {
@@ -246,8 +251,10 @@
       const p = pieces[key] || {}; const meta = p.meta || {};
       const st = pieceState(p, t);
       const age = p.lastEventAt === null || p.lastEventAt === undefined ? null : t - p.lastEventAt;
+      // NEU-151: estado do EEG e o ultimo erro entram no bloco da acquisition — e o
+      // que diz ao operador se o problema e o ThinkGear, o fone ou a peca.
       const details = key.startsWith('acquisition')
-        ? [['fonte', dash(meta.source)], ['ThinkGear', meta.eegHost ? `${meta.eegHost}:${dash(meta.acqPort)}` : '—'], ['Poor Signal', dash(p.poorSignalLevel)], ['atenção', dash(p.attention)], ['último dado', ago(age)]]
+        ? [['fonte', dash(meta.source)], ['ThinkGear', meta.eegHost ? `${meta.eegHost}:${dash(meta.acqPort)}` : '—'], ['EEG', p.eeg === 'connecting' ? 'conectando' : p.eeg === 'connected' ? 'conectado' : '—'], ['último erro', dash(p.lastError)], ['Poor Signal', dash(p.poorSignalLevel)], ['atenção', dash(p.attention)], ['último dado', ago(age)]]
         : [['câmera', meta.camera === undefined ? '—' : `Câmera ${Number(meta.camera) + 1}`], ['mão vista', p.handSeen === null || p.handSeen === undefined ? '—' : p.handSeen ? 'sim' : 'não'], ['última notícia', ago(age)]];
       return { key, level: st, word: DIAG_WORD[st], version: versionLabel(key, meta), line: st === 'ok' ? null : pieceLine(key, st), details };
     }

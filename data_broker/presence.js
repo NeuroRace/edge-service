@@ -33,7 +33,7 @@ function sanitizeMeta(auth) {
 }
 
 function emptyPiece() {
-  return { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null, meta: {} };
+  return { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null, eeg: null, lastError: null, meta: {} };
 }
 
 function createPresence() {
@@ -57,6 +57,11 @@ function createPresence() {
       s.data.source = p.source ?? null;
     } else if (event === 'gestureStatus') {
       s.data.handSeen = p.handSeen === true;
+    } else if (event === 'acquisitionStatus') {
+      // NEU-151: a peca de pe com o EEG fora. `eeg` separa "ThinkGear/fone fora"
+      // de "peca caida", que antes chegavam identicos no painel.
+      s.data.eeg = p.eeg ?? null;
+      s.data.lastError = p.lastError ?? null;
     }
     if (s.key === 'unidentified' && GAME_EVENTS.has(event)) {
       s.lastGameEvent = { event, at: now };

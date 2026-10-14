@@ -67,6 +67,19 @@ function validateGestureStatusPayload(payload) {
   return null;
 }
 
+// NEU-151: estado do EEG da acquisition (a cada 2 s). A peca segue conectada ao
+// broker quando o ThinkGear ou o fone caem, e e este evento que diz qual dos dois e.
+const EEG_STATES = new Set(['connected', 'connecting']);
+
+function validateAcquisitionStatusPayload(payload) {
+  if (!isPlainObject(payload)) return 'payload_must_be_object';
+  if (!isFiniteNumber(payload.player)) return 'player_must_be_number';
+  if (!EEG_STATES.has(payload.eeg)) return 'eeg_must_be_connected_or_connecting';
+  const err = payload.lastError;
+  if (err !== null && err !== undefined && typeof err !== 'string') return 'lastError_must_be_string_or_null';
+  return null;
+}
+
 function validateEventPayload(event, payload) {
   switch (event) {
     case 'eSense':
@@ -75,6 +88,8 @@ function validateEventPayload(event, payload) {
       return validateHandGesturePayload(payload);
     case 'gestureStatus':
       return validateGestureStatusPayload(payload);
+    case 'acquisitionStatus':
+      return validateAcquisitionStatusPayload(payload);
     default:
       return null;
   }
