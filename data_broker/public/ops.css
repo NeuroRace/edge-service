@@ -118,5 +118,14 @@ input[aria-invalid="true"] { border-color: var(--error); }
 .diag-line { margin: 0.4rem 0 0 1.4rem; color: var(--warn); font-size: 0.82rem; }
 .diag-details { display: grid; grid-template-columns: 9rem 1fr; gap: 0.2rem 0.8rem; margin: 0.5rem 0 0 1.4rem; font-size: 0.85rem; }
 .diag-details dt { color: var(--fg-muted); } .diag-details dd { margin: 0; color: var(--fg); }
+/* Fonte e camera por jogador (NEU-86) */
+.setup-row { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 0.5rem; overflow: hidden; }
+.seg-btn { font: inherit; font-size: 0.8rem; padding: 0.3rem 0.8rem; border: 0; background: transparent; color: var(--fg-muted); cursor: pointer; }
+.seg-btn[aria-pressed="true"] { background: var(--fg-strong); color: var(--bg); }
+.seg-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.camera-pick { display: inline-flex; gap: 0.4rem; align-items: center; }
+.camera-pick select { font: inherit; font-size: 0.8rem; background: var(--surface); color: var(--fg); border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.2rem 0.4rem; }
+.setup-msg { font-size: 0.75rem; color: var(--warn); margin: -0.2rem 0 0.6rem; }
 @media (max-width: 720px) { .cards, .signals { grid-template-columns: 1fr; } .signal-body { grid-template-columns: 90px 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

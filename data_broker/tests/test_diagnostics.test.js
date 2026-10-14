@@ -106,3 +106,19 @@ test('statusStrip poe o aviso de versao no topo das linhas', () => {
 test('sem status (broker sem resposta): nada a mostrar', () => {
   assert.deepEqual(S.diagnostics({ status: null }), { pcs: [], versionWarnings: [] });
 });
+
+test('Diagnostico: fonte do ultimo pacote e camera do ultimo gestureStatus vencem o auth (NEU-86)', () => {
+  const status = {
+    now: T,
+    pieces: {
+      'acquisition-p1': piece({ source: 'bot', meta: { version: 'aaaaaaa', source: 'real' } }),
+      'gesture-p1': piece({ camera: 2, meta: { version: 'bbbbbbb', camera: 0 } }),
+      'acquisition-p2': off(), 'gesture-p2': { ...off(), connected: true, lastEventAt: T - 1000, meta: { camera: 1 } },
+    },
+    game: { connections: 0, recentEvents: [] }, connections: {}, redis: { status: 'ready' }, broker: { version: 'c', uptimeSeconds: 60 },
+  };
+  const all = Object.fromEntries(S.diagnostics({ status }).pcs.flatMap((pc) => pc.pieces).map((p) => [p.key, Object.fromEntries(p.details)]));
+  assert.equal(all['acquisition-p1'].fonte, 'bot');
+  assert.equal(all['gesture-p1']['câmera'], 'Câmera 3');
+  assert.equal(all['gesture-p2']['câmera'], 'Câmera 2', 'sem gestureStatus com camera, vale o auth');
+});

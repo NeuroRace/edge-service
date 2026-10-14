@@ -319,9 +319,12 @@
     }
   }
   $('[data-recent-search]').addEventListener('input', renderRecent);
-  $('[data-recent-list]').addEventListener('click', (ev) => {
+  $('[data-recent-list]').addEventListener('click', async (ev) => {
     const btn = ev.target.closest('button[data-fill-slot]');
     if (!btn || btn.disabled) return;
+    // NEU-86 (spec D2): preencher um lado em Bot volta esse lado para NeuroSky.
+    const cur = setupOf(Number(btn.dataset.fillSlot));
+    if (cur && cur.source === 'bot' && !(await postSetup('/api/players/source', { player: Number(btn.dataset.fillSlot), source: 'neurosky' }))) return;
     const slot = btn.dataset.fillSlot; const input = $(`#email${slot}`);
     input.value = btn.dataset.contact;
     input.removeAttribute('aria-invalid'); const err = $(`[data-error="${slot}"]`); err.hidden = true; err.textContent = '';
@@ -338,6 +341,54 @@
     }
     await refresh();
   });
+  // ---------- NEU-86: fonte (NeuroSky | Bot) e camera por jogador ----------
+  const setupMsg = { 1: '', 2: '' };
+  const setupOf = (slot) => (st.status && st.status.setup && st.status.setup[slot]) || null;
+  async function postSetup(path, body) {
+    const slot = body.player;
+    try {
+      const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      setupMsg[slot] = res.ok ? '' : res.status === 409 ? 'Corrida em andamento: troque quando ela terminar.' : `Falha ao trocar (${res.status}). Tente de novo.`;
+      return res.ok;
+    } catch (e) {
+      setupMsg[slot] = 'Sem resposta do broker. Ele está de pé?';
+      return false;
+    } finally { await refresh(); }
+  }
+  document.querySelectorAll('[data-source-btn]').forEach((btn) => btn.addEventListener('click', () => {
+    const slot = Number(btn.dataset.sourceBtn); const cur = setupOf(slot);
+    if (btn.disabled || (cur && cur.source === btn.dataset.source)) return;
+    postSetup('/api/players/source', { player: slot, source: btn.dataset.source });
+  }));
+  document.querySelectorAll('[data-camera]').forEach((sel) => sel.addEventListener('change', () => {
+    postSetup('/api/players/camera', { player: Number(sel.dataset.camera), camera: Number(sel.value) });
+  }));
+  function renderSetup() {
+    const locked = S.setupLocked({ session: st.session, raceEvents: st.raceEvents, history: st.history, now: Date.now() });
+    for (const slot of [1, 2]) {
+      const setup = setupOf(slot); const source = setup ? setup.source : null;
+      document.querySelectorAll(`[data-source-btn="${slot}"]`).forEach((b) => {
+        b.setAttribute('aria-pressed', String(b.dataset.source === source));
+        b.disabled = !setup || locked;
+        b.title = locked ? 'Travado durante a corrida' : !setup ? 'Sem resposta do broker' : '';
+      });
+      // Bot desliga o campo de contato (spec B2): nada a cadastrar, nada vai para a nuvem.
+      const input = $(`#email${slot}`);
+      if (source === 'bot' && !input.disabled) { input.value = ''; input.disabled = true; input.placeholder = 'Bot: não vai para a nuvem'; }
+      else if (source !== 'bot' && input.disabled) { input.disabled = false; input.placeholder = 'jogador@exemplo.com'; }
+      const piece = st.status && st.status.pieces && st.status.pieces[`gesture-p${slot}`];
+      const inUse = piece && piece.connected ? (piece.camera ?? (piece.meta && piece.meta.camera) ?? null) : null;
+      const chosen = setup ? setup.camera : null;
+      const sel = $(`[data-camera="${slot}"]`);
+      sel.disabled = !setup || locked;
+      sel.title = locked ? 'Travado durante a corrida' : '';
+      // Nao troca o valor enquanto o operador esta com o seletor aberto.
+      if (document.activeElement !== sel) sel.value = String(chosen ?? inUse ?? 0);
+      const msg = $(`[data-setup-msg="${slot}"]`);
+      const text = setupMsg[slot] || S.cameraText({ chosen, inUse, error: piece && piece.cameraError });
+      msg.textContent = text; msg.hidden = !text;
+    }
+  }
   // ---------- NEU-142: abas e Diagnostico ----------
   document.querySelectorAll('[data-tab]').forEach((tab) => tab.addEventListener('click', () => {
     for (const t of document.querySelectorAll('[data-tab]')) t.setAttribute('aria-selected', String(t === tab));
@@ -366,7 +417,7 @@
       }
     }
   }
-  function render() { renderStrip(); renderDiag(); renderCards(); renderSignal(1); renderSignal(2); renderRecent(); renderCloud(); renderBanner(); }
+  function render() { renderStrip(); renderDiag(); renderCards(); renderSetup(); renderSignal(1); renderSignal(2); renderRecent(); renderCloud(); renderBanner(); }
 
   setInterval(() => { renderStrip(); renderSignal(1); renderSignal(2); renderBanner(); }, 1000);
   setInterval(refresh, 2000);
