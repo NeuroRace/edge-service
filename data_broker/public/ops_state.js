@@ -159,7 +159,11 @@
     const pc = PIECE_PC[key];
     const player = key.slice(-2).toUpperCase();
     if (key.startsWith('acquisition')) {
-      return state === 'down' ? `${key} desligado · suba as peças do ${pc}` : `${key} sem dados · confira o fone do ${player} no ${pc}`;
+      // A acquisition so conecta no broker depois de conectar no EEG (acquisition_runner): sem
+      // conexao pode ser ThinkGear/fone fora OU a peca caida. A mais provavel vem primeiro.
+      return state === 'down'
+        ? `${key} sem conexão · confira o ThinkGear e o fone do ${player} no ${pc} (ou suba as peças)`
+        : `${key} sem dados · confira o fone do ${player} no ${pc}`;
     }
     return state === 'down' ? `${key} desligado · abra o detector de gesto no ${pc}` : `${key} sem notícia · reinicie o detector de gesto no ${pc}`;
   }

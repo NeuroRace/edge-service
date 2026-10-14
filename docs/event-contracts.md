@@ -15,6 +15,22 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
 - Fila de envio (NEU-143): `GET /api/dispatch/overview` -> `counts` (`waiting`, `retrying`, `sending`, `failed`), `lastSentAt`, `failed[]` (`jobId`, `sessionId`, `playerId`, `email` mascarado, `failedAt`, `reason`, `httpStatus`, `errorCode`, `attempts`, `error`, `retryable`), mais recente primeiro; `POST /api/dispatch/requeue` `{jobId}` -> `200 {ok,jobId}` · `404 not_found` · `409 not_retryable` · `415` sem JSON
 - Eventos repassados sem alteracao: `blink`, `eSense`, `handGesture`, `raceStarted`, `hasFinished`, `gameEvent`
 - Eventos validados no broker nesta fase: `eSense`, `handGesture`
+- Presenca das pecas (NEU-139): `GET /api/status` -> `now` (relogio do broker), `pieces` (`acquisition-p1`, `gesture-p1`, `acquisition-p2`, `gesture-p2`, cada uma com `connected`, `lastEventAt`, `attention`, `poorSignalLevel`, `source`, `handSeen`), `game` (`connections`, `lastGameEvent`), `redis.status`
+
+## Identificacao das pecas (NEU-139)
+
+Cada cliente nosso se apresenta no connect do Socket.IO com `auth`. O broker usa isso para a faixa de status do painel.
+
+| Cliente | `auth` |
+| -- | -- |
+| `eeg_acquisition` | `{ role: 'acquisition', player: 1\|2 }` |
+| `gesture_detector` | `{ role: 'gesture', player: 1\|2 }` |
+| painel (`public/ops.js`) | `{ role: 'panel' }` |
+| `test_client` | `{ role: 'test-client' }` |
+| jogo (Unreal), `e2e/jogo-falso.js` | nenhum |
+
+- `auth` ausente ou invalido nao derruba a conexao: o socket vira "nao identificado", e **conexao nao identificada conta como o jogo** (fallback ate a NEU-146).
+- Evento `gestureStatus` (`gesture_detector`, a cada 2 s): `{ "player": 1, "handSeen": true, "timeStamp": 1760000000000 }`. Validado no broker (`handSeen` booleano) e **nunca repassado**: so atualiza a presenca.
 
 ## Event: `eSense`
 

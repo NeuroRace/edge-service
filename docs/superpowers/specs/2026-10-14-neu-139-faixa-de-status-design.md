@@ -92,7 +92,7 @@ Função pura nova, `OpsState.statusStrip({ status, health, overview, waitingSin
 | Situação | Texto |
 | -- | -- |
 | Coletor inteiro `down` | `Coletor sem resposta · confira se o PC coletor está ligado e o cabo plugado` (substitui as linhas das peças do coletor) |
-| `acquisition-pN` `down` | `acquisition-pN desligado · suba as peças do PC central` (P1) / `… do PC coletor` (P2) |
+| `acquisition-pN` `down` | `acquisition-pN sem conexão · confira o ThinkGear e o fone do PN no PC central/coletor (ou suba as peças)`. A acquisition só conecta no broker depois de conectar no EEG, então "sem conexão" também é "ThinkGear fora" (achado no E2E de 14/10). |
 | `acquisition-pN` `stale` | `acquisition-pN sem dados · confira o fone do PN no PC central/coletor` |
 | `gesture-pN` `down` | `gesture-pN desligado · abra o detector de gesto no PC central/coletor` |
 | `gesture-pN` `stale` | `gesture-pN sem notícia · reinicie o detector de gesto no PC central/coletor` |

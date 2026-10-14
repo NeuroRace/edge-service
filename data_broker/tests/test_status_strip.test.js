@@ -24,7 +24,9 @@ test('CA: acquisition-p2 parado com gesture-p2 vivo -> Coletor amarelo com o que
   const st = allOk(); st.pieces['acquisition-p2'] = off();
   const r = strip(st);
   assert.equal(r.groups.coletor, 'warn');
-  assert.deepEqual(r.lines, ['acquisition-p2 desligado · suba as peças do PC coletor']);
+  // A acquisition so conecta no broker depois do EEG (acquisition_runner): sem conexao pode ser
+  // ThinkGear/fone fora OU a peca caida. O texto aponta as duas, a mais provavel primeiro.
+  assert.deepEqual(r.lines, ['acquisition-p2 sem conexão · confira o ThinkGear e o fone do P2 no PC coletor (ou suba as peças)']);
 });
 
 test('CA: PC coletor desligado -> vermelho e uma linha so', () => {
