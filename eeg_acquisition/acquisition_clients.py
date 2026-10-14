@@ -13,6 +13,11 @@ def create_eeg_client(config: AcquisitionConfig):
     return client
 
 
+def broker_auth(config: AcquisitionConfig):
+    # NEU-139: o broker reconhece a peca pelo auth do socket.io (faixa de status do painel).
+    return {"role": "acquisition", "player": config.player_id}
+
+
 def create_broker_client(config: AcquisitionConfig):
     sio = socketio.Client(
         logger=True,
@@ -22,7 +27,7 @@ def create_broker_client(config: AcquisitionConfig):
         reconnection_delay=config.retry_base_delay_seconds,
         reconnection_delay_max=config.retry_max_delay_seconds,
     )
-    sio.connect(config.broker_url, wait_timeout=config.broker_connect_timeout_seconds)
+    sio.connect(config.broker_url, auth=broker_auth(config), wait_timeout=config.broker_connect_timeout_seconds)
     return sio
 
 
