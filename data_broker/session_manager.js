@@ -11,7 +11,8 @@
 // (dado persistido aguardando o dispatcher do Stage 3).
 const { randomUUID } = require('node:crypto');
 // Mesma regra de e-mail da tela de operacao (public/ops_state.js): um so lugar.
-const { normalizeEmail, validateEmail } = require('./public/ops_state');
+const { normalizeEmail, validateEmail, RACE_LOCK_MS } = require('./public/ops_state');
+const { PLAYER_SETUP_KEY } = require('./player_setup');
 
 // ioredis `multi().exec()` resolve com um array de tuplas [err, result] e NAO
 // rejeita quando um comando individual falha — so rejeita em abort de transacao.
@@ -59,9 +60,16 @@ function createSessionManager(redis, config, log, hooks = {}) {
     return email;
   }
 
+  // NEU-86 (spec B2): lado escolhido como Bot no painel nunca e cadastrado nem enviado.
+  async function botSlots() {
+    const setup = (await redis.hgetall(PLAYER_SETUP_KEY)) || {};
+    return { 1: setup.p1Source === 'bot', 2: setup.p2Source === 'bot' };
+  }
+
   async function registerPlayers(rawPlayer1Email, rawPlayer2Email) {
-    const player1Email = checkEmail(rawPlayer1Email, 'player1Email');
-    const player2Email = checkEmail(rawPlayer2Email, 'player2Email');
+    const bots = await botSlots();
+    const player1Email = bots[1] ? '' : checkEmail(rawPlayer1Email, 'player1Email');
+    const player2Email = bots[2] ? '' : checkEmail(rawPlayer2Email, 'player2Email');
     const player1 = await validateEmailRemote(player1Email);
     const player2 = await validateEmailRemote(player2Email);
 
@@ -87,10 +95,11 @@ function createSessionManager(redis, config, log, hooks = {}) {
 
   async function onRaceStarted() {
     const pending = await redis.hgetall('pending:players');
-    const player1Email = pending?.player1Email || '';
-    const player1Uuid = pending?.player1Uuid || '';
-    const player2Email = pending?.player2Email || '';
-    const player2Uuid = pending?.player2Uuid || '';
+    const bots = await botSlots();
+    const player1Email = bots[1] ? '' : pending?.player1Email || '';
+    const player1Uuid = bots[1] ? '' : pending?.player1Uuid || '';
+    const player2Email = bots[2] ? '' : pending?.player2Email || '';
+    const player2Uuid = bots[2] ? '' : pending?.player2Uuid || '';
 
     // Limpa o estado da corrida anterior antes de criar a nova. Sem isto, as flags
     // `player{N}Dispatched` da corrida passada sobrevivem e fazem o `hasFinished`
@@ -264,6 +273,14 @@ function createSessionManager(redis, config, log, hooks = {}) {
     }
   }
 
+  // NEU-86: ha corrida de gente em andamento? Trava a troca de fonte e camera.
+  async function raceInProgress(at = now()) {
+    const s = await redis.hgetall('session:current');
+    if (!s || s.status !== 'active') return false;
+    if (!(at - Number(s.startedAt) < RACE_LOCK_MS)) return false;
+    return [1, 2].some((n) => s[`player${n}IsBot`] !== 'true' && s[`player${n}Dispatched`] !== 'true');
+  }
+
   async function getCurrentSession() {
     const session = await redis.hgetall('session:current');
     // `pending` = jogadores registrados para a PROXIMA corrida (tela de operacao).
@@ -311,7 +328,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
     log('info', 'recent_players_cleared', {});
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers };
+  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress };
 }
 
 module.exports = { createSessionManager, execMulti, RECENT_PLAYERS_MAX };
