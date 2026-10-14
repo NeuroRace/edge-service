@@ -383,7 +383,7 @@
       sel.disabled = !setup || locked;
       sel.title = locked ? 'Travado durante a corrida' : '';
       // Nao troca o valor enquanto o operador esta com o seletor aberto.
-      if (document.activeElement !== sel) sel.value = String(chosen ?? inUse ?? 0);
+      if (document.activeElement !== sel) sel.value = S.cameraSelectValue({ chosen, inUse });
       const msg = $(`[data-setup-msg="${slot}"]`);
       const text = setupMsg[slot] || S.cameraText({ chosen, inUse, error: piece && piece.cameraError });
       msg.textContent = text; msg.hidden = !text;

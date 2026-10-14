@@ -56,6 +56,12 @@
     return [1, 2].some((slot) => cardState({ slot, session, pending: null, raceEvents, history }) === 'racing');
   }
 
+  // O seletor mostra a camera EM USO (a que o detector informa). Mostrar a escolha que
+  // falhou enganaria o operador; sem noticia do detector, mostra a escolha guardada.
+  function cameraSelectValue({ chosen, inUse }) {
+    return String(inUse ?? chosen ?? 0);
+  }
+
   // Linha embaixo do seletor de camera: erro da ultima troca ou troca ainda chegando.
   function cameraText({ chosen, inUse, error }) {
     if (error) return String(error);
@@ -316,5 +322,5 @@
     return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, cameraText };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, cameraText, cameraSelectValue };
 }));
