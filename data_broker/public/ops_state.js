@@ -66,6 +66,21 @@
     return [1, 2].some((slot) => ['racing', 'missing'].includes(cardState({ slot, session, pending: null, raceEvents, history })));
   }
 
+  // NEU-140: Parar armado so vale para a corrida em que foi armado, e so enquanto ela esta aberta.
+  function stopArmValid({ armedSessionId, session }) {
+    return Boolean(armedSessionId && session && session.status === 'active' && session.sessionId === armedSessionId);
+  }
+
+  // NEU-140: campo de contato e caixa "Sem cadastro". Bot (NEU-86) e Sem cadastro desligam o campo;
+  // numa corrida sem cadastro (missing) o campo e do Vincular, entao a caixa some e desmarca.
+  function contactFieldState({ source, noSignup, state }) {
+    const PH = 'jogador@exemplo.com';
+    if (source === 'bot') return { boxHidden: true, boxChecked: false, disabled: true, placeholder: 'Bot: não vai para a nuvem' };
+    if (state === 'missing') return { boxHidden: true, boxChecked: false, disabled: false, placeholder: PH };
+    if (noSignup) return { boxHidden: false, boxChecked: true, disabled: true, placeholder: 'Sem cadastro: não vai para a nuvem' };
+    return { boxHidden: false, boxChecked: false, disabled: false, placeholder: PH };
+  }
+
   // NEU-140 (spec B8a, C2 no plano B): Registrar trava com o motivo ao lado. Bot nao tem contato.
   function registerBlockers(slots) {
     const out = [];
@@ -352,5 +367,5 @@
     return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, cameraText, cameraSelectValue };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
 }));

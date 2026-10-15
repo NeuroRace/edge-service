@@ -349,10 +349,13 @@ function createSessionManager(redis, config, log, hooks = {}) {
   }
 
   // NEU-140 (spec C6): Parar. Nada da corrida e gravado; a proxima dupla (pending) fica.
-  async function stopRace() {
+  // `expectedId` (opcional) = a corrida que o operador via: o jogo pode ter largado outra
+  // entre a tela e o clique, e essa nao pode ser parada no lugar da que ele viu.
+  async function stopRace(expectedId) {
     const at = now();
     const s = await readSession(at);
     if (!s || s.status !== 'active') return { ok: false, error: 'no_active_session' };
+    if (expectedId && expectedId !== s.id) return { ok: false, error: 'session_changed' };
     if (!(await closeSession(s.id, 'cancelled', at))) return { ok: false, error: 'no_active_session' };
     log('info', 'race_stopped', { sessionId: s.id, afterMs: at - Number(s.startedAt) });
     return { ok: true, sessionId: s.id };
@@ -360,12 +363,14 @@ function createSessionManager(redis, config, log, hooks = {}) {
 
   // NEU-140: o jogo largou sem registro (lado missing); o operador vincula o contato
   // ate o hasFinished daquele lado. Atomico contra o claim do hasFinished (LINK_SCRIPT).
-  async function linkPlayer(player, rawEmail) {
+  async function linkPlayer(player, rawEmail, expectedId) {
     if (player !== 1 && player !== 2) return { ok: false, error: 'invalid_player' };
     const email = normalizeEmail(rawEmail);
     if (!email || !validateEmail(email)) return { ok: false, error: 'invalid_email' };
     const s = await readSession();
     if (!s || s.status !== 'active') return { ok: false, error: 'no_active_session' };
+    // Mesma regra do Parar: a pessoa da corrida que o operador via nao vai para a seguinte.
+    if (expectedId && expectedId !== s.id) return { ok: false, error: 'session_changed' };
     const result = await redis.eval(LINK_SCRIPT, 1, SESSION_KEY, String(player), email, s.id);
     if (result !== 'ok') return { ok: false, error: String(result) };
     await execMulti(redis.multi().zadd(RECENT_PLAYERS, now(), email).zremrangebyrank(RECENT_PLAYERS, 0, -(RECENT_PLAYERS_MAX + 1)));
