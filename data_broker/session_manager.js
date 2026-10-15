@@ -13,6 +13,7 @@ const { randomUUID } = require('node:crypto');
 // Mesma regra de e-mail da tela de operacao (public/ops_state.js): um so lugar.
 const { normalizeEmail, validateEmail, RACE_LOCK_MS } = require('./public/ops_state');
 const { PLAYER_SETUP_KEY } = require('./player_setup');
+const { CLOSE_SCRIPT } = require('./session_scripts');
 
 // ioredis `multi().exec()` resolve com um array de tuplas [err, result] e NAO
 // rejeita quando um comando individual falha — so rejeita em abort de transacao.
@@ -49,6 +50,27 @@ function kindOf(session, n) {
 function createSessionManager(redis, config, log, hooks = {}) {
   const now = typeof hooks.now === 'function' ? hooks.now : Date.now;
   const minEegPackets = Number(config?.minEegPackets) || 1;
+  const SESSION_KEY = 'session:current';
+  const packetsKey = (id, n) => `session:${id}:player:${n}:packets`;
+  // eSense de sessao fechada: um log por sessao, nao um por pacote (1/s por jogador).
+  const loggedClosed = new Set();
+
+  // NEU-140: fecha a sessao `id` de forma atomica (so se ainda for a atual e estiver aberta).
+  async function closeSession(id, status, at) {
+    const closed = await redis.eval(CLOSE_SCRIPT, 3, SESSION_KEY, packetsKey(id, 1), packetsKey(id, 2), id, status, String(at));
+    return Number(closed) === 1;
+  }
+
+  // Le a sessao atual e aplica a expiracao (spec L3): 10 min da largada = esquecida.
+  async function readSession(at = now()) {
+    const s = await redis.hgetall(SESSION_KEY);
+    if (!s || !s.id) return null;
+    if (s.status === 'active' && !(at - Number(s.startedAt) < RACE_LOCK_MS)) {
+      if (await closeSession(s.id, 'expired', at)) log('info', 'session_expired', { sessionId: s.id, startedAt: Number(s.startedAt) });
+      return redis.hgetall(SESSION_KEY);
+    }
+    return s;
+  }
 
   // Identificacao por UUID Supabase ainda nao implementada (Stage 3 / NEU-37).
   // Ate la, todo e-mail e registrado sem validacao remota (`validated: false`).
@@ -178,16 +200,21 @@ function createSessionManager(redis, config, log, hooks = {}) {
     // Bots nao sao persistidos (apenas jogadores humanos geram telemetria de corrida).
     if (payload.source === 'bot') return;
 
-    const session = await redis.hgetall('session:current');
+    const session = await readSession();
     if (!session || !session.id) {
       log('warn', 'esense_no_active_session', { player: payload.player });
       return;
     }
+    if (session.status !== 'active') {
+      if (!loggedClosed.has(session.id)) {
+        if (loggedClosed.size > 100) loggedClosed.clear();
+        loggedClosed.add(session.id);
+        log('warn', 'esense_ignored_closed_session', { sessionId: session.id, status: session.status });
+      }
+      return;
+    }
 
-    await redis.rpush(
-      `session:${session.id}:player:${payload.player}:packets`,
-      JSON.stringify(payload),
-    );
+    await redis.rpush(packetsKey(session.id, payload.player), JSON.stringify(payload));
   }
 
   async function onHasFinished(payload) {
@@ -199,9 +226,13 @@ function createSessionManager(redis, config, log, hooks = {}) {
       return;
     }
 
-    const session = await redis.hgetall('session:current');
+    const session = await readSession();
     if (!session || !session.id) {
       log('warn', 'has_finished_no_active_session', { playerId });
+      return;
+    }
+    if (session.status !== 'active') {
+      log('warn', 'has_finished_ignored_closed_session', { playerId, sessionId: session.id, status: session.status });
       return;
     }
 
@@ -308,16 +339,26 @@ function createSessionManager(redis, config, log, hooks = {}) {
     }
   }
 
+  // NEU-140 (spec C6): Parar. Nada da corrida e gravado; a proxima dupla (pending) fica.
+  async function stopRace() {
+    const at = now();
+    const s = await readSession(at);
+    if (!s || s.status !== 'active') return { ok: false, error: 'no_active_session' };
+    if (!(await closeSession(s.id, 'cancelled', at))) return { ok: false, error: 'no_active_session' };
+    log('info', 'race_stopped', { sessionId: s.id, afterMs: at - Number(s.startedAt) });
+    return { ok: true, sessionId: s.id };
+  }
+
   // NEU-86: ha corrida de gente em andamento? Trava a troca de fonte e camera.
+  // NEU-140: so sessao aberta; lado esquecido (missing) conta como gente.
   async function raceInProgress(at = now()) {
-    const s = await redis.hgetall('session:current');
+    const s = await readSession(at);
     if (!s || s.status !== 'active') return false;
-    if (!(at - Number(s.startedAt) < RACE_LOCK_MS)) return false;
-    return [1, 2].some((n) => s[`player${n}IsBot`] !== 'true' && s[`player${n}Dispatched`] !== 'true');
+    return [1, 2].some((n) => ['contact', 'missing'].includes(kindOf(s, n)) && s[`player${n}Dispatched`] !== 'true');
   }
 
   async function getCurrentSession() {
-    const session = await redis.hgetall('session:current');
+    const session = await readSession();
     // `pending` = jogadores registrados para a PROXIMA corrida (tela de operacao).
     const pendingRaw = await redis.hgetall('pending:players');
     const pending = pendingRaw && pendingRaw.player1Email !== undefined
@@ -370,7 +411,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
     log('info', 'recent_players_cleared', {});
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress };
+  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress, stopRace };
 }
 
 module.exports = { createSessionManager, execMulti, RECENT_PLAYERS_MAX };

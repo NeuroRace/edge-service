@@ -6,6 +6,7 @@
 // NAO e um arquivo de teste (sem `.test.`), entao node --test nao o executa.
 const { EventEmitter } = require('node:events');
 const assert = require('node:assert/strict');
+const { CLOSE_SCRIPT } = require('../session_scripts');
 
 class FakeRedis extends EventEmitter {
   constructor() {
@@ -221,6 +222,21 @@ class FakeRedis extends EventEmitter {
 
   async expire() {
     return 1; // no-op no fake
+  }
+
+  // Os scripts Lua da sessao (NEU-140), na mesma logica, em JS. Outro script = erro alto.
+  async eval(script, numKeys, ...rest) {
+    const keys = rest.slice(0, numKeys).map(String);
+    const argv = rest.slice(numKeys).map(String);
+    const h = this.hashes.get(keys[0]);
+    const get = (f) => (h && h.has(f) ? h.get(f) : null);
+    if (script === CLOSE_SCRIPT) {
+      if (get('id') !== argv[0] || get('status') !== 'active') return 0;
+      h.set('status', argv[1]); h.set('closedAt', argv[2]);
+      await this.del(keys[1], keys[2]);
+      return 1;
+    }
+    throw new Error('FakeRedis.eval: script desconhecido');
   }
 
   multi() {
