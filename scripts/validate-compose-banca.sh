@@ -19,7 +19,7 @@ for name, pid, host, port in (("acquisition-a-sim","1","simulator-a","13854"),("
         need(str(env.get("ACQ_PORT")) == port, f"{name}: ACQ_PORT={env.get('ACQ_PORT')} (esperado {port})")
         need(env.get("SOURCE") == "real", f"{name}: SOURCE={env.get('SOURCE')} (esperado real)")
         need("broker" in dep and host in dep, f"{name}: depends_on={list(dep)} (esperado broker + {host})")
-for name in ("simulator-a","simulator-b"):
+for name in ("simulator-a","simulator-b","broker"):
     if name in s: need(s[name].get("restart") == "unless-stopped", f"{name}: restart={s[name].get('restart')} (esperado unless-stopped)")
 if "broker" in s:
     env = s["broker"].get("environment", {})
@@ -27,6 +27,6 @@ if "broker" in s:
         need(str(env.get(k)) == d, f"broker: {k}={env.get(k)} (esperado default {d} sem env)")
 if fails:
     print("FAIL validate-compose-banca:"); [print("  -", f) for f in fails]; sys.exit(1)
-print("OK validate-compose-banca: perfil banca = 2 simuladores + 2 jogadores humanos, restart nos simuladores, DISPATCH_* no broker")
+print("OK validate-compose-banca: perfil banca = 2 simuladores + 2 jogadores humanos, restart nos simuladores e no broker, DISPATCH_* no broker")
 PY
 rm -f /tmp/compose-banca.$$.json
