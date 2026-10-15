@@ -63,8 +63,9 @@ O broker manda, so para a peca daquele jogador:
 - O `hasFinished` reivindica o lado (`HSETNX playerNDispatched`) **antes** de ler a sessao; depois disso nenhum vinculo grava.
 - So `missing` conta como descarte (`/health`, `no_email_registered`). `bot` e `nosignup` logam `has_finished_not_saved`.
 - Rotas (JSON obrigatorio, corpo ate 4096 bytes, `413`, `415`):
-  - `POST /api/session/link` `{ "player": 1|2, "email" }` -> `200 { ok, session }` · `400 invalid_player|invalid_email|invalid_json` · `409 no_active_session|not_missing|already_finished`. So para lado `missing` antes do `hasFinished` dele;
-  - `POST /api/session/stop` `{}` -> `200 { ok, sessionId }` · `409 no_active_session`. Nada da corrida e gravado; a proxima dupla registrada fica.
+  - `POST /api/session/link` `{ "player": 1|2, "email", "sessionId"? }` -> `200 { ok, session }` · `400 invalid_player|invalid_email|invalid_json` · `409 no_active_session|not_missing|already_finished|session_changed`. So para lado `missing` antes do `hasFinished` dele;
+  - `POST /api/session/stop` `{ "sessionId"? }` -> `200 { ok, sessionId }` · `409 no_active_session|session_changed`. Nada da corrida e gravado; a proxima dupla registrada fica.
+  - `sessionId` (opcional, texto) = a corrida que o painel via. Se o jogo largou outra no meio, a resposta e `409 session_changed` e nada muda (o painel sempre manda).
 - `GET /api/session/current` ganha `player1Kind`/`player2Kind` (e `pending.playerNKind`).
 - **Limitacao:** o jogo nao manda id de corrida. Um `hasFinished` atrasado que chega **depois da largada seguinte** cai na corrida nova. A solucao (id no `raceStarted`/`hasFinished`) esta na NEU-146.
 
