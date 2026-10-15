@@ -58,6 +58,20 @@ O broker manda, so para a peca daquele jogador:
   - respostas: `200 { ok, setup }`, `400` (`invalid_player`, `invalid_source`, `invalid_camera`, `invalid_json`), `409 race_in_progress` (alguem humano correndo, ate 10 min da largada), `413`, `415`.
 - **Bot nunca sobe (spec B2):** na largada, o lado com `pNSource = bot` vira bot na sessao (e-mail vazio), seja qual for o `source` dos pacotes. No registro, o e-mail de um lado em Bot e ignorado.
 
+## Sessao da corrida: sem cadastro, vincular e parar (NEU-140, plano B)
+
+- `POST /api/players` aceita `player1NoSignup`/`player2NoSignup` (so `true` booleano vale). Lado NeuroSky com e-mail vazio **sem** `NoSignup` -> `400 missing_contact` com `field`. Lado em Bot ignora os dois.
+- `session:current` ganha `playerNKind`: `contact` (vai para a nuvem), `nosignup` (marcado de proposito), `bot` (escolha do painel), `missing` (o jogo largou sem registro). `playerNIsBot` continua = "nao vai para a nuvem" (`false` so para `contact`).
+- `status`: `active`, `cancelled` (Parar) ou `expired` (10 min da largada, `RACE_LOCK_MS`; aplicado na primeira leitura). Em sessao fechada, `eSense` e `hasFinished` sao ignorados com log (`esense_ignored_closed_session`, uma vez por sessao; `has_finished_ignored_closed_session`).
+- Fechar (Parar/expirar) e vincular sao scripts Lua atomicos (`session_scripts.js`) que conferem o `id` da sessao: um Parar que leu a sessao A nao fecha a B se o jogo largou no meio.
+- O `hasFinished` reivindica o lado (`HSETNX playerNDispatched`) **antes** de ler a sessao; depois disso nenhum vinculo grava.
+- So `missing` conta como descarte (`/health`, `no_email_registered`). `bot` e `nosignup` logam `has_finished_not_saved`.
+- Rotas (JSON obrigatorio, corpo ate 4096 bytes, `413`, `415`):
+  - `POST /api/session/link` `{ "player": 1|2, "email" }` -> `200 { ok, session }` · `400 invalid_player|invalid_email|invalid_json` · `409 no_active_session|not_missing|already_finished`. So para lado `missing` antes do `hasFinished` dele;
+  - `POST /api/session/stop` `{}` -> `200 { ok, sessionId }` · `409 no_active_session`. Nada da corrida e gravado; a proxima dupla registrada fica.
+- `GET /api/session/current` ganha `player1Kind`/`player2Kind` (e `pending.playerNKind`).
+- **Limitacao:** o jogo nao manda id de corrida. Um `hasFinished` atrasado que chega **depois da largada seguinte** cai na corrida nova. A solucao (id no `raceStarted`/`hasFinished`) esta na NEU-146.
+
 ## Event: `eSense`
 
 - Produtor confirmado: `eeg_acquisition/acquisition_service.py`
