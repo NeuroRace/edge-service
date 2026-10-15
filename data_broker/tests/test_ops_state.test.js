@@ -16,10 +16,10 @@ test('test_OpsState_cardState_follows_operator_sequence', () => {
   assert.equal(S.cardState({ slot: 1, session: none, pending: null, raceEvents: {}, history: [] }), 'waiting');
   const pending = { player1Email: 'a@x.com', player2Email: '' };
   assert.equal(S.cardState({ slot: 1, session: none, pending, raceEvents: {}, history: [] }), 'registered');
-  assert.equal(S.cardState({ slot: 2, session: none, pending, raceEvents: {}, history: [] }), 'anonymous');
+  assert.equal(S.cardState({ slot: 2, session: none, pending, raceEvents: {}, history: [] }), 'waiting', 'pending sem kind (broker antigo) com vazio');
   const active = { status: 'active', sessionId: 's1', player1Email: 'a@x.com', player2Email: '', player1IsBot: false, player2IsBot: true, startedAt: 100 };
   assert.equal(S.cardState({ slot: 1, session: active, pending: null, raceEvents: {}, history: [] }), 'racing');
-  assert.equal(S.cardState({ slot: 2, session: active, pending: null, raceEvents: {}, history: [] }), 'anonymous');
+  assert.equal(S.cardState({ slot: 2, session: active, pending: null, raceEvents: {}, history: [] }), 'bot');
   assert.equal(S.cardState({ slot: 1, session: active, pending: null, raceEvents: { 1: true }, history: [] }), 'finished');
   const sent = [{ jobId: 'j', playerId: 1, status: 'sent', at: 150, sessionId: 's1' }];
   assert.equal(S.cardState({ slot: 1, session: active, pending: null, raceEvents: { 1: true }, history: sent }), 'sent');
@@ -44,14 +44,14 @@ test('test_OpsState_alerts_only_when_something_is_wrong', () => {
   });
   assert.deepEqual(ok, []);
   const bad = S.alerts({
-    session: { status: 'active', player1IsBot: true, player2IsBot: true },
+    session: { status: 'active', player1IsBot: true, player2IsBot: true, player1Kind: 'missing', player2Kind: 'missing' },
     health: { discardedRaces: 3, dispatcher: { enabled: false, reason: 'api_url_missing', counts: { queue: 2, processing: 0, deadletter: 0 } } },
     signals: { 1: { link: 'lost' }, 2: { link: 'ok' } }, now: 100_000, queueSince: 50_000, prevDiscarded: 2,
   });
   const codes = bad.map((a) => a.code);
-  assert.deepEqual(codes, ['race_without_players', 'race_discarded', 'cloud_disabled', 'queue_stuck', 'signal_lost']);
+  assert.deepEqual(codes, ['race_missing_contact', 'race_discarded', 'cloud_disabled', 'queue_stuck', 'signal_lost']);
   assert.ok(bad.every((a) => a.level === 'error' || a.level === 'warn'));
-  assert.match(bad[0].text, /NÃO será salva/);
+  assert.match(bad[0].text, /largaram sem cadastro/);
   assert.match(bad.find((a) => a.code === 'signal_lost').text, /jogador 1/i);
   const young = S.alerts({ session: { status: 'none' }, health: { discardedRaces: 0, dispatcher: { enabled: true, counts: { queue: 1, processing: 0, deadletter: 0 } } }, signals: {}, now: 60_000, queueSince: 40_000, prevDiscarded: 0 });
   assert.deepEqual(young.map((a) => a.code), [], 'fila com <30s nao alerta');
