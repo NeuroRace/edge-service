@@ -67,7 +67,9 @@ function handleRequeue(req, res, dispatchAdmin, log) {
 
 const SETUP_STATUS = { invalid_player: 400, invalid_source: 400, invalid_camera: 400, race_in_progress: 409 };
 
-const SESSION_STATUS = { invalid_player: 400, invalid_email: 400, no_active_session: 409, not_missing: 409, already_finished: 409 };
+const SESSION_STATUS = { invalid_player: 400, invalid_email: 400, no_active_session: 409, not_missing: 409, already_finished: 409, session_changed: 409 };
+// `sessionId` (opcional): a corrida que o painel via. So texto conta.
+const seenSession = (data) => (typeof data.sessionId === 'string' && data.sessionId ? data.sessionId : undefined);
 
 // NEU-86: POST /api/players/source e /api/players/camera; NEU-140: /api/session/link e /stop.
 // JSON obrigatorio (CSRF, como o requeue). `statusMap` traduz o `error` do resultado em HTTP.
@@ -226,11 +228,11 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAd
 
     // NEU-140: vincular o contato a uma corrida largada sem registro, e Parar.
     if (session && req.method === 'POST' && req.url === '/api/session/link') {
-      handleJsonPost(req, res, log, (data) => session.linkPlayer(data.player, data.email), SESSION_STATUS, 'api_session_link_error');
+      handleJsonPost(req, res, log, (data) => session.linkPlayer(data.player, data.email, seenSession(data)), SESSION_STATUS, 'api_session_link_error');
       return;
     }
     if (session && req.method === 'POST' && req.url === '/api/session/stop') {
-      handleJsonPost(req, res, log, () => session.stopRace(), SESSION_STATUS, 'api_session_stop_error');
+      handleJsonPost(req, res, log, (data) => session.stopRace(seenSession(data)), SESSION_STATUS, 'api_session_stop_error');
       return;
     }
     if (session && req.method === 'POST' && req.url === '/api/players') {

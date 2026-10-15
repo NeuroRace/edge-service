@@ -81,15 +81,14 @@
   // ---------- NEU-140: contato, Sem cadastro e travas do Registrar ----------
   const noSignupBox = (slot) => $(`[data-nosignup="${slot}"]`);
   const cardStates = { 1: 'waiting', 2: 'waiting' };
-  // Campo de contato: Bot (NEU-86) e Sem cadastro desligam; o resto liga.
+  // Campo de contato e caixa Sem cadastro (regra em OpsState.contactFieldState).
   function applyContactField(slot, source) {
     const input = $(`#email${slot}`); const box = noSignupBox(slot);
-    box.closest('.nosignup').hidden = source === 'bot';
-    if (source === 'bot') box.checked = false;
-    const off = source === 'bot' || box.checked;
-    if (off && !input.disabled) { input.value = ''; input.disabled = true; }
-    else if (!off && input.disabled) input.disabled = false;
-    input.placeholder = source === 'bot' ? 'Bot: não vai para a nuvem' : box.checked ? 'Sem cadastro: não vai para a nuvem' : 'jogador@exemplo.com';
+    const f = S.contactFieldState({ source, noSignup: box.checked, state: cardStates[slot] });
+    box.closest('.nosignup').hidden = f.boxHidden; box.checked = f.boxChecked;
+    if (f.disabled && !input.disabled) { input.value = ''; input.disabled = true; }
+    else if (!f.disabled && input.disabled) input.disabled = false;
+    input.placeholder = f.placeholder;
   }
   function renderBlockers() {
     const slots = {};
@@ -154,9 +153,9 @@
     if (!email || !S.validateEmail(email)) { input.setAttribute('aria-invalid', 'true'); err.textContent = 'Digite um e-mail válido para vincular.'; err.hidden = false; return; }
     btn.disabled = true;
     try {
-      const res = await fetch('/api/session/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player: slot, email }) });
+      const res = await fetch('/api/session/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player: slot, email, sessionId: st.session.sessionId }) });
       const body = await res.json().catch(() => ({}));
-      const MSG = { already_finished: 'Essa corrida já terminou sem cadastro.', not_missing: 'Esse lado já tem cadastro.', no_active_session: 'Não há corrida em andamento.', invalid_email: 'O broker recusou este e-mail.' };
+      const MSG = { session_changed: 'A corrida mudou. Confira o card e clique de novo.', already_finished: 'Essa corrida já terminou sem cadastro.', not_missing: 'Esse lado já tem cadastro.', no_active_session: 'Não há corrida em andamento.', invalid_email: 'O broker recusou este e-mail.' };
       if (res.ok) { input.removeAttribute('aria-invalid'); err.hidden = true; err.textContent = ''; $('#register-hint').textContent = `Jogador ${slot} vinculado: ${email}.`; }
       else { err.textContent = MSG[body.error] || `Falha ao vincular (${res.status}).`; err.hidden = false; }
     } catch (e) {
@@ -167,20 +166,27 @@
   // ---------- NEU-140: Parar corrida (dois passos, sem confirm() que trava a tela) ----------
   const stopBtn = $('[data-stop]');
   let stopArmTimer = null;
-  function disarmStop() { clearTimeout(stopArmTimer); stopArmTimer = null; stopBtn.dataset.armed = 'false'; stopBtn.textContent = 'Parar corrida'; }
+  // O Parar armado guarda a corrida (e os contatos) que o operador via no 1o clique.
+  let armed = null;
+  function disarmStop() { clearTimeout(stopArmTimer); stopArmTimer = null; armed = null; stopBtn.dataset.armed = 'false'; stopBtn.textContent = 'Parar corrida'; }
   stopBtn.addEventListener('click', async () => {
-    if (stopBtn.dataset.armed !== 'true') {
+    if (!armed || !S.stopArmValid({ armedSessionId: armed.sessionId, session: st.session })) {
+      disarmStop();
+      armed = { sessionId: st.session.sessionId, contacts: { 1: st.session.player1Kind === 'contact' ? st.session.player1Email : '', 2: st.session.player2Kind === 'contact' ? st.session.player2Email : '' } };
       stopBtn.dataset.armed = 'true'; stopBtn.textContent = 'Confirmar: parar sem gravar?';
       stopArmTimer = setTimeout(disarmStop, 5000);
       return;
     }
-    disarmStop();
     // Contatos da corrida parada: voltam aos campos (sem registrar) se nao ha proxima dupla.
-    const stopped = { 1: st.session.player1Kind === 'contact' ? st.session.player1Email : '', 2: st.session.player2Kind === 'contact' ? st.session.player2Email : '' };
+    const { sessionId, contacts: stopped } = armed;
+    disarmStop();
     stopBtn.disabled = true;
     try {
-      const res = await fetch('/api/session/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      $('#register-hint').textContent = res.ok ? 'Corrida parada, nada foi gravado. Pare também no jogo.' : res.status === 409 ? 'Não há corrida em andamento.' : `Falha ao parar (${res.status}).`;
+      const res = await fetch('/api/session/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }) });
+      const body = await res.json().catch(() => ({}));
+      $('#register-hint').textContent = res.ok ? 'Corrida parada, nada foi gravado. Pare também no jogo.'
+        : body.error === 'session_changed' ? 'A corrida mudou antes da confirmação: nada foi parado. Confira e pare de novo.'
+          : res.status === 409 ? 'Não há corrida em andamento.' : `Falha ao parar (${res.status}).`;
       await refresh();
       if (res.ok && !st.session.pending && !$('#email1').value && !$('#email2').value) {
         for (const slot of [1, 2]) if (stopped[slot] && !$(`#email${slot}`).disabled) $(`#email${slot}`).value = stopped[slot];
@@ -215,8 +221,11 @@
       else if (input.readOnly) { input.readOnly = false; input.value = ''; }
       else input.readOnly = false;
       $(`[data-link-player="${slot}"]`).hidden = state !== 'missing';
+      const setup = setupOf(slot); applyContactField(slot, setup ? setup.source : null);
     }
     $('[data-stop]').hidden = st.session.status !== 'active';
+    // Parar armado numa corrida que fechou ou mudou nao vale para a seguinte.
+    if (armed && !S.stopArmValid({ armedSessionId: armed.sessionId, session: st.session })) disarmStop();
     renderBlockers();
   }
   function sparkPath(points) {
