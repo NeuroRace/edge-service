@@ -6,7 +6,7 @@
 // NAO e um arquivo de teste (sem `.test.`), entao node --test nao o executa.
 const { EventEmitter } = require('node:events');
 const assert = require('node:assert/strict');
-const { CLOSE_SCRIPT } = require('../session_scripts');
+const { CLOSE_SCRIPT, LINK_SCRIPT } = require('../session_scripts');
 
 class FakeRedis extends EventEmitter {
   constructor() {
@@ -235,6 +235,14 @@ class FakeRedis extends EventEmitter {
       h.set('status', argv[1]); h.set('closedAt', argv[2]);
       await this.del(keys[1], keys[2]);
       return 1;
+    }
+    if (script === LINK_SCRIPT) {
+      const p = `player${argv[0]}`;
+      if (get('id') !== argv[2] || get('status') !== 'active') return 'no_active_session';
+      if (get(`${p}Kind`) !== 'missing') return 'not_missing';
+      if (h.has(`${p}Dispatched`)) return 'already_finished';
+      h.set(`${p}Email`, argv[1]); h.set(`${p}Kind`, 'contact'); h.set(`${p}IsBot`, 'false');
+      return 'ok';
     }
     throw new Error('FakeRedis.eval: script desconhecido');
   }

@@ -15,4 +15,17 @@ redis.call('DEL', KEYS[2], KEYS[3])
 return 1
 `;
 
-module.exports = { CLOSE_SCRIPT };
+// Vincula o contato ao lado N da sessao `id`, so se o lado ainda e `missing` e o hasFinished
+// dele nao reivindicou o lado. KEYS: session:current. ARGV: n, email, id.
+const LINK_SCRIPT = `
+local s = KEYS[1]
+local p = 'player' .. ARGV[1]
+if redis.call('HGET', s, 'id') ~= ARGV[3] then return 'no_active_session' end
+if redis.call('HGET', s, 'status') ~= 'active' then return 'no_active_session' end
+if redis.call('HGET', s, p .. 'Kind') ~= 'missing' then return 'not_missing' end
+if redis.call('HEXISTS', s, p .. 'Dispatched') == 1 then return 'already_finished' end
+redis.call('HSET', s, p .. 'Email', ARGV[2], p .. 'Kind', 'contact', p .. 'IsBot', 'false')
+return 'ok'
+`;
+
+module.exports = { CLOSE_SCRIPT, LINK_SCRIPT };

@@ -13,7 +13,7 @@ const { randomUUID } = require('node:crypto');
 // Mesma regra de e-mail da tela de operacao (public/ops_state.js): um so lugar.
 const { normalizeEmail, validateEmail, RACE_LOCK_MS } = require('./public/ops_state');
 const { PLAYER_SETUP_KEY } = require('./player_setup');
-const { CLOSE_SCRIPT } = require('./session_scripts');
+const { CLOSE_SCRIPT, LINK_SCRIPT } = require('./session_scripts');
 
 // ioredis `multi().exec()` resolve com um array de tuplas [err, result] e NAO
 // rejeita quando um comando individual falha — so rejeita em abort de transacao.
@@ -236,9 +236,24 @@ function createSessionManager(redis, config, log, hooks = {}) {
       return;
     }
 
-    if (session[`player${playerId}IsBot`] === 'true') {
-      // NEU-73: antes era um return mudo — a forma mais provavel de perder a corrida de
-      // uma pessoa real (largada sem registrar e-mails) sem ninguem perceber.
+    const dispatchedKey = `player${playerId}Dispatched`;
+
+    // Claim atomico primeiro (bug H3: HSETNX), depois a releitura. NEU-140: depois do claim
+    // nenhum vinculo grava (LINK_SCRIPT confere o Dispatched), entao a releitura e a verdade.
+    const claimed = await redis.hsetnx(SESSION_KEY, dispatchedKey, 'true');
+    if (claimed === 0) {
+      log('warn', 'has_finished_duplicate', { playerId, sessionId: session.id });
+      return;
+    }
+    const current = await redis.hgetall(SESSION_KEY);
+    if (!current || current.id !== session.id || current.status !== 'active') {
+      log('warn', 'has_finished_ignored_closed_session', { playerId, sessionId: session.id, status: current && current.status });
+      return;
+    }
+
+    const kind = kindOf(current, playerId);
+    if (kind === 'missing') {
+      // NEU-73: largada sem registro — a forma mais provavel de perder a corrida de uma pessoa.
       log('warn', 'has_finished_discarded_bot', {
         playerId, sessionId: session.id, reason: 'no_email_registered',
       });
@@ -247,22 +262,16 @@ function createSessionManager(redis, config, log, hooks = {}) {
       }
       return;
     }
-
-    const dispatchedKey = `player${playerId}Dispatched`;
-
-    // Claim atomico: garante que apenas um `hasFinished` consolida o jogador,
-    // mesmo com eventos concorrentes/reemitidos (bug H3 — substitui o
-    // read-check-write nao atomico por um HSETNX).
-    const claimed = await redis.hsetnx('session:current', dispatchedKey, 'true');
-    if (claimed === 0) {
-      log('warn', 'has_finished_duplicate', { playerId, sessionId: session.id });
+    if (kind !== 'contact') {
+      // Bot ou "Sem cadastro": escolha do operador, nada a gravar e nada a alertar.
+      log('info', 'has_finished_not_saved', { playerId, sessionId: session.id, kind });
       return;
     }
 
-    const packetsKey = `session:${session.id}:player:${playerId}:packets`;
+    const listKey = packetsKey(session.id, playerId);
 
     try {
-      const rawPackets = await redis.lrange(packetsKey, 0, -1);
+      const rawPackets = await redis.lrange(listKey, 0, -1);
 
       // Parse defensivo: um pacote corrompido nao derruba a corrida inteira (bug H2).
       const packets = [];
@@ -288,7 +297,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
       // para a fila, de forma barulhenta (log + /health + tela). O claim fica gravado:
       // um hasFinished duplicado nao dispara um segundo descarte.
       if (packets.length < minEegPackets) {
-        await redis.del(packetsKey);
+        await redis.del(listKey);
         log('warn', 'has_finished_discarded_no_eeg', {
           playerId, sessionId: session.id, reason: 'no_eeg_signal', packets: packets.length, minPackets: minEegPackets,
         });
@@ -304,8 +313,8 @@ function createSessionManager(redis, config, log, hooks = {}) {
         sessionId: session.id,
         persistedAt: Date.now(),
         payload: {
-          email: session[`player${playerId}Email`],
-          playerUuid: session[`player${playerId}Uuid`] || null,
+          email: current[`player${playerId}Email`],
+          playerUuid: current[`player${playerId}Uuid`] || null,
           startedAt: Number(session.startedAt),
           finishedAt: Date.now(),
           packets,
@@ -315,7 +324,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
       // Persiste o resultado e remove a lista de pacotes ja consolidada (anti-leak).
       // execMulti garante que uma falha por-comando nao passe como sucesso.
       await execMulti(
-        redis.multi().rpush('dispatch:queue', JSON.stringify(record)).del(packetsKey),
+        redis.multi().rpush('dispatch:queue', JSON.stringify(record)).del(listKey),
       );
 
       log('info', 'race_result_persisted', {
@@ -347,6 +356,21 @@ function createSessionManager(redis, config, log, hooks = {}) {
     if (!(await closeSession(s.id, 'cancelled', at))) return { ok: false, error: 'no_active_session' };
     log('info', 'race_stopped', { sessionId: s.id, afterMs: at - Number(s.startedAt) });
     return { ok: true, sessionId: s.id };
+  }
+
+  // NEU-140: o jogo largou sem registro (lado missing); o operador vincula o contato
+  // ate o hasFinished daquele lado. Atomico contra o claim do hasFinished (LINK_SCRIPT).
+  async function linkPlayer(player, rawEmail) {
+    if (player !== 1 && player !== 2) return { ok: false, error: 'invalid_player' };
+    const email = normalizeEmail(rawEmail);
+    if (!email || !validateEmail(email)) return { ok: false, error: 'invalid_email' };
+    const s = await readSession();
+    if (!s || s.status !== 'active') return { ok: false, error: 'no_active_session' };
+    const result = await redis.eval(LINK_SCRIPT, 1, SESSION_KEY, String(player), email, s.id);
+    if (result !== 'ok') return { ok: false, error: String(result) };
+    await execMulti(redis.multi().zadd(RECENT_PLAYERS, now(), email).zremrangebyrank(RECENT_PLAYERS, 0, -(RECENT_PLAYERS_MAX + 1)));
+    log('info', 'player_linked', { sessionId: s.id, playerId: player });
+    return { ok: true, session: await getCurrentSession() };
   }
 
   // NEU-86: ha corrida de gente em andamento? Trava a troca de fonte e camera.
@@ -411,7 +435,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
     log('info', 'recent_players_cleared', {});
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress, stopRace };
+  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress, stopRace, linkPlayer };
 }
 
 module.exports = { createSessionManager, execMulti, RECENT_PLAYERS_MAX };
