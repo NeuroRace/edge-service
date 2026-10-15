@@ -22,7 +22,7 @@ test('registerPlayers grava emails em pending:players', async () => {
 
 test('onRaceStarted cria sessao com raceId e detecta bot por email vazio', async () => {
   const { redis, session } = makeSession();
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
 
   const s = await redis.hgetall('session:current');
@@ -36,7 +36,7 @@ test('onRaceStarted cria sessao com raceId e detecta bot por email vazio', async
 
 test('onEsense acumula pacote de humano e ignora bot e sem-sessao', async () => {
   const { redis, session } = makeSession();
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   const s = await redis.hgetall('session:current');
 
@@ -52,7 +52,7 @@ test('onEsense acumula pacote de humano e ignora bot e sem-sessao', async () => 
 
 test('onHasFinished persiste resultado em dispatch:queue e remove a lista de pacotes', async () => {
   const { redis, session } = makeSession();
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   const s = await redis.hgetall('session:current');
   await session.onEsense({ player: 1, source: 'real', attention: 70, meditation: 40, timeStamp: 10 });
@@ -72,7 +72,7 @@ test('onHasFinished persiste resultado em dispatch:queue e remove a lista de pac
 
 test('onHasFinished e idempotente: segundo evento do mesmo jogador e ignorado (claim atomico)', async () => {
   const { redis, session } = makeSession();
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
 
@@ -85,7 +85,7 @@ test('onHasFinished e idempotente: segundo evento do mesmo jogador e ignorado (c
 
 test('onHasFinished ignora jogador bot', async () => {
   const { redis, session } = makeSession();
-  await session.registerPlayers('human@x.com', ''); // player2 = bot
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true }); // player2 = bot
   await session.onRaceStarted();
 
   await session.onHasFinished({ playerId: 2 });
@@ -96,14 +96,14 @@ test('REGRESSAO C3: flags Dispatched nao vazam entre corridas — 2a corrida per
   const { redis, session } = makeSession();
 
   // Corrida 1
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
   await session.onHasFinished({ playerId: 1 });
   assert.equal((await redis.lrange('dispatch:queue', 0, -1)).length, 1);
 
   // Corrida 2 (mesmo processo/Redis)
-  await session.registerPlayers('human2@x.com', '');
+  await session.registerPlayers('human2@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   await session.onEsense({ player: 1, source: 'real', attention: 5, timeStamp: 1 });
   await session.onHasFinished({ playerId: 1 });
@@ -115,21 +115,21 @@ test('REGRESSAO C3: flags Dispatched nao vazam entre corridas — 2a corrida per
 
 test('onRaceStarted limpa as listas de pacotes da corrida anterior (anti-leak)', async () => {
   const { redis, session } = makeSession();
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   const s1 = await redis.hgetall('session:current');
   await session.onEsense({ player: 1, source: 'real', attention: 1, timeStamp: 1 });
   assert.equal(await redis.llen(`session:${s1.id}:player:1:packets`), 1);
 
   // Nova corrida sem finalizar a anterior: a lista antiga deve sumir
-  await session.registerPlayers('human2@x.com', '');
+  await session.registerPlayers('human2@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   assert.equal(await redis.llen(`session:${s1.id}:player:1:packets`), 0);
 });
 
 test('REGRESSAO H2: um pacote corrompido nao derruba a consolidacao', async () => {
   const { redis, session } = makeSession();
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   const s = await redis.hgetall('session:current');
   const key = `session:${s.id}:player:1:packets`;
@@ -156,7 +156,7 @@ test('onHasFinished libera o claim em falha para permitir reprocessamento', asyn
     return original(...args);
   };
   const session = createSessionManager(redis, {}, noopLog);
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
 
@@ -168,7 +168,7 @@ test('onHasFinished libera o claim em falha para permitir reprocessamento', asyn
 
 test('onHasFinished com playerId invalido nao persiste nem grava flag', async () => {
   const { redis, session } = makeSession();
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
 
   await session.onHasFinished({}); // sem playerId
@@ -195,7 +195,7 @@ test('getCurrentSession reporta none e depois active', async () => {
   const { session } = makeSession();
   assert.deepEqual(await session.getCurrentSession(), { status: 'none' });
 
-  await session.registerPlayers('human@x.com', '');
+  await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   const cur = await session.getCurrentSession();
   assert.equal(cur.status, 'active');

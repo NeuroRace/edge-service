@@ -25,14 +25,25 @@
   }
 
   // Estado do cartao do jogador, na ordem do trabalho do operador:
-  // waiting -> registered|anonymous -> racing -> finished -> sent|rejected
+  // waiting -> registered|nosignup|bot -> racing -> finished -> sent|rejected
+  // NEU-140: missing (o jogo largou sem registro; da para Vincular) -> lost (terminou sem).
+  function kindOf(session, key) {
+    const k = session[`${key}Kind`];
+    if (k === 'contact' || k === 'nosignup' || k === 'bot' || k === 'missing') return k;
+    return session[`${key}IsBot`] ? 'bot' : 'contact'; // broker anterior a NEU-140
+  }
   function cardState({ slot, session, pending, raceEvents, history }) {
     const key = `player${slot}`;
     if (pending && pending[`${key}Email`] !== undefined) {
-      return pending[`${key}Email`] ? 'registered' : 'anonymous';
+      if (pending[`${key}Email`]) return 'registered';
+      const k = pending[`${key}Kind`];
+      return k === 'nosignup' || k === 'bot' ? k : 'waiting';
     }
     if (session && session.status === 'active') {
-      if (session[`${key}IsBot`]) return 'anonymous';
+      const kind = kindOf(session, key);
+      const done = Boolean(session[`${key}Finished`] || (raceEvents && raceEvents[slot]));
+      if (kind === 'missing') return done ? 'lost' : 'missing';
+      if (kind !== 'contact') return kind;
       // Historico da sessao atual manda (a pagina pode ter sido aberta DEPOIS do hasFinished).
       // Correlacao por sessionId — um envio atrasado da corrida anterior nao pode "fechar" a atual.
       // Entradas antigas sem sessionId (broker anterior) caem no criterio de tempo.
@@ -40,8 +51,7 @@
       const mine = (history || []).filter((h) => h.playerId === slot
         && (h.sessionId ? h.sessionId === session.sessionId : Number(h.at) >= startedAt));
       if (mine.length > 0) return mine[0].status === 'sent' ? 'sent' : 'rejected';
-      // Flag persistida no Redis (hasFinished ja consolidou) ou evento visto por esta pagina.
-      if (session[`${key}Finished`] || (raceEvents && raceEvents[slot])) return 'finished';
+      if (done) return 'finished';
       return 'racing';
     }
     return 'waiting';
@@ -53,7 +63,36 @@
   function setupLocked({ session, raceEvents, history, now }) {
     if (!session || session.status !== 'active') return false;
     if (!(now - Number(session.startedAt) < RACE_LOCK_MS)) return false;
-    return [1, 2].some((slot) => cardState({ slot, session, pending: null, raceEvents, history }) === 'racing');
+    return [1, 2].some((slot) => ['racing', 'missing'].includes(cardState({ slot, session, pending: null, raceEvents, history })));
+  }
+
+  // NEU-140: Parar armado so vale para a corrida em que foi armado, e so enquanto ela esta aberta.
+  function stopArmValid({ armedSessionId, session }) {
+    return Boolean(armedSessionId && session && session.status === 'active' && session.sessionId === armedSessionId);
+  }
+
+  // NEU-140: campo de contato e caixa "Sem cadastro". Bot (NEU-86) e Sem cadastro desligam o campo;
+  // numa corrida sem cadastro (missing) o campo e do Vincular, entao a caixa some e desmarca.
+  function contactFieldState({ source, noSignup, state }) {
+    const PH = 'jogador@exemplo.com';
+    if (source === 'bot') return { boxHidden: true, boxChecked: false, disabled: true, placeholder: 'Bot: não vai para a nuvem' };
+    if (state === 'missing') return { boxHidden: true, boxChecked: false, disabled: false, placeholder: PH };
+    if (noSignup) return { boxHidden: false, boxChecked: true, disabled: true, placeholder: 'Sem cadastro: não vai para a nuvem' };
+    return { boxHidden: false, boxChecked: false, disabled: false, placeholder: PH };
+  }
+
+  // NEU-140 (spec B8a, C2 no plano B): Registrar trava com o motivo ao lado. Bot nao tem contato.
+  function registerBlockers(slots) {
+    const out = [];
+    for (const slot of [1, 2]) {
+      const s = slots[slot] || {};
+      if (s.source === 'bot') continue;
+      if (s.state === 'missing') { out.push({ slot, code: 'link_first', text: `P${slot}: corrida sem cadastro, use Vincular` }); continue; }
+      const email = normalizeEmail(s.email);
+      if (email && !validateEmail(email)) out.push({ slot, code: 'invalid_email', text: `P${slot}: e-mail inválido` });
+      else if (!email && s.noSignup !== true) out.push({ slot, code: 'missing_contact', text: `P${slot}: digite o contato ou marque Sem cadastro` });
+    }
+    return out;
   }
 
   // O seletor mostra a camera EM USO (a que o detector informa). Mostrar a escolha que
@@ -118,8 +157,14 @@
     const out = [];
     const disp = (health && health.dispatcher) || { enabled: false };
     const counts = disp.counts || {};
-    if (session && session.status === 'active' && session.player1IsBot && session.player2IsBot) {
-      out.push({ level: 'error', code: 'race_without_players', text: 'Corrida iniciada sem jogadores registrados — NÃO será salva. Registre os e-mails antes da largada.' });
+    // NEU-140: alerta por lado; so enquanto da para vincular (antes do hasFinished daquele lado).
+    if (session && session.status === 'active') {
+      const missing = [1, 2].filter((slot) => cardState({ slot, session, pending: null, raceEvents: null, history: [] }) === 'missing');
+      if (missing.length) {
+        const who = missing.map((n) => `P${n}`).join(' e ');
+        const verb = missing.length === 2 ? 'largaram' : 'largou';
+        out.push({ level: 'error', code: 'race_missing_contact', text: `${who} ${verb} sem cadastro. Digite o contato e clique em Vincular antes de terminar.` });
+      }
     }
     if (health && Number(health.discardedRaces) > Number(prevDiscarded || 0)) {
       const text = health.lastDiscardReason === 'no_eeg_signal'
@@ -322,5 +367,5 @@
     return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, cameraText, cameraSelectValue };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
 }));
