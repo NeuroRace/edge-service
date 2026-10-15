@@ -6,6 +6,12 @@ const { createDispatcher } = require('../api_dispatcher');
 const REDIS_URL = process.env.REDIS_URL;
 const skip = REDIS_URL ? false : 'REDIS_URL nao definido';
 const KEYS = ['dispatch:queue', 'dispatch:processing', 'dispatch:deadletter', 'dispatch:retry', 'dispatch:attempts', 'dispatch:history'];
+// NEU-152: banco logico so deste arquivo. O `node --test` roda os arquivos em
+// paralelo e o test_session_integration (db 2) tambem apaga `dispatch:queue` —
+// no mesmo banco um derrubava o outro, e a suite falhava em testes diferentes a
+// cada rodada. `select` em vez da opcao `db` do construtor: quando a REDIS_URL
+// traz caminho de banco (`.../0`), a URL vence a opcao, em silencio.
+const DB = 1;
 const noSleep = async () => {};
 
 function record() {
@@ -31,6 +37,7 @@ function startServer(handler) {
 async function freshClient() {
   const Redis = require('ioredis');
   const client = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
+  await client.select(DB);
   await client.del(...KEYS);
   return client;
 }

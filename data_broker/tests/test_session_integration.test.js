@@ -11,10 +11,17 @@ const skip = REDIS_URL ? false : 'REDIS_URL nao definido';
 
 const noopLog = () => {};
 const FIXED_KEYS = ['pending:players', 'session:current', 'dispatch:queue'];
+// NEU-152: banco logico so deste arquivo. O `node --test` roda os arquivos em
+// paralelo e o test_dispatcher_integration (db 1) tambem apaga `dispatch:queue` —
+// no mesmo banco um derrubava o outro, e a suite falhava em testes diferentes a
+// cada rodada. `select` em vez da opcao `db` do construtor: quando a REDIS_URL
+// traz caminho de banco (`.../0`), a URL vence a opcao, em silencio.
+const DB = 2;
 
 async function freshClient() {
   const Redis = require('ioredis');
   const client = new Redis(REDIS_URL, { maxRetriesPerRequest: 1 });
+  await client.select(DB);
   await client.del(...FIXED_KEYS);
   return client;
 }
