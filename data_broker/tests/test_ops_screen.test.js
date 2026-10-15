@@ -46,8 +46,16 @@ test('test_OpsScreenServed_root_returns_html_with_strict_csp_and_three_blocks', 
       assert.match(res.body, new RegExp(`data-source-btn="${slot}" data-source="bot"`));
       assert.match(res.body, new RegExp(`data-camera="${slot}"`));
       assert.match(res.body, new RegExp(`data-setup-msg="${slot}"`));
+      // NEU-140: Sem cadastro e Vincular em cada card.
+      assert.match(res.body, new RegExp(`data-nosignup="${slot}"`));
+      assert.match(res.body, new RegExp(`data-link-player="${slot}"`));
+      // data-link ja e o indicador de conexao do bloco de sinal: nome repetido faria o sinal escrever no botao.
+      assert.equal((res.body.match(new RegExp(`data-link="${slot}"`, 'g')) || []).length, 1);
     }
     assert.match(res.body, /<option value="2">Câmera 3<\/option>/);
+    assert.match(res.body, /data-register-blockers/);
+    assert.match(res.body, /data-stop/);
+    assert.doesNotMatch(res.body, /deixe em branco para anônimo/);
   } finally { server.close(); }
 });
 
