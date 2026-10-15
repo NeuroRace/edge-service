@@ -67,8 +67,11 @@ function handleRequeue(req, res, dispatchAdmin, log) {
 
 const SETUP_STATUS = { invalid_player: 400, invalid_source: 400, invalid_camera: 400, race_in_progress: 409 };
 
-// NEU-86: POST /api/players/source e /api/players/camera. JSON obrigatorio (CSRF, como o requeue).
-function handleSetup(req, res, log, apply) {
+const SESSION_STATUS = { invalid_player: 400, invalid_email: 400, no_active_session: 409, not_missing: 409, already_finished: 409 };
+
+// NEU-86: POST /api/players/source e /api/players/camera; NEU-140: /api/session/link e /stop.
+// JSON obrigatorio (CSRF, como o requeue). `statusMap` traduz o `error` do resultado em HTTP.
+function handleJsonPost(req, res, log, apply, statusMap, errorTag) {
   if (!isJsonRequest(req)) {
     sendJson(res, 415, { error: 'unsupported_media_type' });
     req.resume();
@@ -91,9 +94,9 @@ function handleSetup(req, res, log, apply) {
     try { data = JSON.parse(body); } catch { sendJson(res, 400, { error: 'invalid_json' }); return; }
     try {
       const result = await apply(data || {});
-      sendJson(res, result.ok ? 200 : SETUP_STATUS[result.error] || 500, result);
+      sendJson(res, result.ok ? 200 : statusMap[result.error] || 500, result);
     } catch (err) {
-      log('error', 'api_player_setup_error', { error: err?.message ?? String(err) });
+      log('error', errorTag, { error: err?.message ?? String(err) });
       sendJson(res, 500, { error: 'internal_error' });
     }
   });
@@ -213,14 +216,23 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAd
     }
 
     if (playerSetup && req.method === 'POST' && req.url === '/api/players/source') {
-      handleSetup(req, res, log, (d) => playerSetup.setSource(d.player, d.source));
+      handleJsonPost(req, res, log, (d) => playerSetup.setSource(d.player, d.source), SETUP_STATUS, 'api_player_setup_error');
       return;
     }
     if (playerSetup && req.method === 'POST' && req.url === '/api/players/camera') {
-      handleSetup(req, res, log, (d) => playerSetup.setCamera(d.player, d.camera));
+      handleJsonPost(req, res, log, (d) => playerSetup.setCamera(d.player, d.camera), SETUP_STATUS, 'api_player_setup_error');
       return;
     }
 
+    // NEU-140: vincular o contato a uma corrida largada sem registro, e Parar.
+    if (session && req.method === 'POST' && req.url === '/api/session/link') {
+      handleJsonPost(req, res, log, (data) => session.linkPlayer(data.player, data.email), SESSION_STATUS, 'api_session_link_error');
+      return;
+    }
+    if (session && req.method === 'POST' && req.url === '/api/session/stop') {
+      handleJsonPost(req, res, log, () => session.stopRace(), SESSION_STATUS, 'api_session_stop_error');
+      return;
+    }
     if (session && req.method === 'POST' && req.url === '/api/players') {
       let body = '';
       let bodySize = 0;
@@ -254,13 +266,16 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAd
         const player2Email = String(data.player2Email || '');
 
         try {
-          const result = await session.registerPlayers(player1Email, player2Email);
+          const result = await session.registerPlayers(player1Email, player2Email, {
+            p1NoSignup: data.player1NoSignup === true,
+            p2NoSignup: data.player2NoSignup === true,
+          });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(result));
         } catch (err) {
-          if (err && err.code === 'invalid_email') {
+          if (err && (err.code === 'invalid_email' || err.code === 'missing_contact')) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'invalid_email', field: err.field }));
+            res.end(JSON.stringify({ error: err.code, field: err.field }));
             return;
           }
           log('error', 'api_players_error', { error: err?.message ?? String(err) });
