@@ -22,7 +22,9 @@ Se `"enabled": false` → o `.env` da raiz não foi lido (ver "Se algo der errad
 Abra **http://localhost:3000/** no navegador do kiosk (essa é a tela do operador). Você deve ver: **sem banner** no topo, os dois blocos de "Sinal ao vivo" com bolinha verde e "conectado", e "Nuvem: ligada → …".
 
 ## 2. Cada corrida (o que você faz, na ordem)
-1. **Registrar.** Digite o e-mail dos 2 jogadores e clique **Registrar jogadores**. Os cartões ficam **Registrado** (etapa 1 acesa). Sem e-mail = **Anônimo — não vai para a nuvem** (a pessoa joga, mas não entra no ranking). O registro vale 1 hora.
+1. **Registrar.** Digite o e-mail dos 2 jogadores e clique **Registrar jogadores**. Os cartões ficam **Registrado** (etapa 1 acesa). Quem não quer cadastro: marque **Sem cadastro** no card (a pessoa joga, mas não entra no ranking). Campo vazio sem a caixa marcada trava o Registrar, com o motivo escrito ao lado. O registro vale 1 hora.
+   * **O jogo largou sem registro?** O card mostra **Sem cadastro nesta corrida** e o topo fica vermelho. Digite o e-mail e clique **Vincular a esta corrida** antes de a pessoa terminar.
+   * **Precisa cancelar?** **Parar corrida** e confirme no mesmo botão. Nada é gravado. **Pare também no jogo** (o painel ainda não manda o jogo parar). Os e-mails voltam para os campos.
 2. **Largada** (o jogo emite `raceStarted`). Os cartões passam a **Correndo**; os e-mails ficam travados; o sinal dos dois jogadores continua vivo.
 3. **Chegada** (o jogo emite `hasFinished` de cada jogador). Cartão → **Finalizada — enviando…** → **Enviada ✓** em ~2 s; a corrida aparece no histórico do bloco Nuvem.
 4. **Mostrar no site.** `https://neurorace-v2.vercel.app/ranking` (público, atualiza ao recarregar) e o dashboard do jogador (ele entra com a conta do mesmo e-mail; se ainda não tem conta, cria com o **mesmo e-mail** e a corrida aparece após confirmar).
