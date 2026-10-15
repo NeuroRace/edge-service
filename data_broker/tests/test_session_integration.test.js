@@ -24,7 +24,7 @@ test('integracao: fluxo completo persiste resultado no Redis real', { skip }, as
   const redis = await freshClient();
   try {
     const session = createSessionManager(redis, {}, noopLog);
-    await session.registerPlayers('human@x.com', '');
+    await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
     await session.onRaceStarted();
     await session.onEsense({ player: 1, source: 'real', attention: 70, timeStamp: 1 });
     await session.onEsense({ player: 1, source: 'real', attention: 71, timeStamp: 2 });
@@ -47,14 +47,14 @@ test('integracao: flag Dispatched nao vaza entre corridas (HSETNX real)', { skip
     const session = createSessionManager(redis, {}, noopLog);
 
     // Corrida 1
-    await session.registerPlayers('a@x.com', '');
+    await session.registerPlayers('a@x.com', '', { p2NoSignup: true });
     await session.onRaceStarted();
     await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
     await session.onHasFinished({ playerId: 1 });
     await session.onHasFinished({ playerId: 1 }); // duplicado real -> HSETNX bloqueia
 
     // Corrida 2
-    await session.registerPlayers('b@x.com', '');
+    await session.registerPlayers('b@x.com', '', { p2NoSignup: true });
     await session.onRaceStarted();
     await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
     await session.onHasFinished({ playerId: 1 });

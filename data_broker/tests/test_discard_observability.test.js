@@ -11,7 +11,6 @@ const { createHttpServer } = require('../http_server');
 test('test_DiscardIsLoud_hasFinished_of_bot_logs_warn_and_calls_hook', async () => {
   const redis = new FakeRedis(); const logs = []; let discarded = 0;
   const session = createSessionManager(redis, {}, (level, message, meta) => logs.push({ level, message, ...meta }), { onDiscarded: () => { discarded += 1; } });
-  await session.registerPlayers('', '');
   await session.onRaceStarted();
   await session.onHasFinished({ playerId: 1 });
   const warn = logs.find((l) => l.message === 'has_finished_discarded_bot');
@@ -24,7 +23,7 @@ test('test_DiscardIsLoud_hasFinished_of_bot_logs_warn_and_calls_hook', async () 
 test('test_DiscardIsLoud_human_finish_does_not_call_hook', async () => {
   const redis = new FakeRedis(); let discarded = 0;
   const session = createSessionManager(redis, {}, () => {}, { onDiscarded: () => { discarded += 1; } });
-  await session.registerPlayers('h@x.com', '');
+  await session.registerPlayers('h@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
   await session.onHasFinished({ playerId: 1 });

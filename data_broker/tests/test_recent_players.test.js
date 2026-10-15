@@ -17,7 +17,7 @@ function makeSession() {
 
 test('registro com contato entra na lista, mais recente primeiro; anonimo nao entra', async () => {
   const { session, tick } = makeSession();
-  await session.registerPlayers('a@x.com', '');
+  await session.registerPlayers('a@x.com', '', { p2NoSignup: true });
   tick();
   await session.registerPlayers('b@x.com', 'c@x.com');
   const list = await session.getRecentPlayers();
@@ -31,7 +31,7 @@ test('registrar de novo sobe para o topo sem duplicar; contato normalizado', asy
   const { session, tick } = makeSession();
   await session.registerPlayers('a@x.com', 'b@x.com');
   tick();
-  await session.registerPlayers('  A@X.com ', '');
+  await session.registerPlayers('  A@X.com ', '', { p2NoSignup: true });
   const list = await session.getRecentPlayers();
   assert.deepEqual(list.map((p) => p.contact), ['a@x.com', 'b@x.com']);
   assert.equal(list[0].lastAt, 2000);
@@ -46,7 +46,7 @@ test('registro invalido nao grava nada na lista', async () => {
 test('lista guarda no maximo RECENT_PLAYERS_MAX; saem os mais antigos', async () => {
   const { session, tick } = makeSession();
   for (let i = 0; i < RECENT_PLAYERS_MAX + 3; i += 1) {
-    await session.registerPlayers(`p${i}@x.com`, '');
+    await session.registerPlayers(`p${i}@x.com`, '', { p2NoSignup: true });
     tick();
   }
   const list = await session.getRecentPlayers();
@@ -82,7 +82,7 @@ async function withServer(session, fn) {
 
 test('GET /api/players/recent devolve a lista; POST clear exige JSON', async () => {
   const { session } = makeSession();
-  await session.registerPlayers('a@x.com', '');
+  await session.registerPlayers('a@x.com', '', { p2NoSignup: true });
   await withServer(session, async (port) => {
     let res = await request(port, { path: '/api/players/recent' });
     assert.equal(res.status, 200);
