@@ -56,7 +56,7 @@
   * e-mail vazio **e** `noSignup = true` → sem cadastro;
   * e-mail vazio **sem** `noSignup` → erro `missing_contact` com `field` (`player1Email` ou `player2Email`);
   * e-mail inválido → `invalid_email` com `field`, como hoje.
-* `pending:players` passa a guardar `player1NoSignup` e `player2NoSignup` (`'true'` ou `'false'`).
+* `pending:players` passa a guardar `player1NoSignup` e `player2NoSignup` (`'true'` ou `'false'`), e também `player1Kind`/`player2Kind` (`contact`, `nosignup` ou `bot`), para o card mostrar o estado antes da largada.
 * Só cadastrados entram nos últimos jogadores, como hoje.
 
 ### Vincular: `linkPlayer(player, rawEmail)`
@@ -69,7 +69,7 @@
 * Grava `playerNEmail`, `playerNKind = contact`, `playerNIsBot = false` e põe o contato nos últimos jogadores.
 * Resultado: `{ ok: true, session }`, ou `{ ok: false, error }` com `invalid_player`, `invalid_email`, `no_active_session`, `not_missing`, `already_finished`.
 * **Corrida com o `hasFinished`:** o vínculo e o `hasFinished` disputam o mesmo lado. Duas regras fecham a janela:
-  * o vínculo é uma transação (`WATCH session:current` + `MULTI`) que só grava se o lado ainda não tem `playerNDispatched`. Se o `hasFinished` reivindicou o lado no meio, a transação falha e a resposta é `already_finished`;
+  * o vínculo é um script Lua atômico (`session_scripts.js`) que só grava se a sessão ainda é a mesma (`id`), está `active`, o lado é `missing` e não tem `playerNDispatched`. Se o `hasFinished` reivindicou o lado antes, a resposta é `already_finished`. `WATCH` não serve: o broker usa uma conexão só, e o `EXEC` de qualquer outro trecho desfaz o `WATCH`;
   * o `onHasFinished` passa a fazer o **claim primeiro** (`HSETNX playerNDispatched`) para qualquer lado, e só depois **relê** a sessão para decidir entre consolidar e descartar. Depois do claim nenhum vínculo grava, então a releitura é a verdade final. Hoje ele lê a sessão antes do claim: um vínculo gravado nesse meio faria a corrida ser descartada com o painel dizendo "vinculado".
 
 ### Parar: `stopRace()`
@@ -91,7 +91,12 @@
 ### Expirar (L3)
 
 * Uma sessão `active` com `now - startedAt >= RACE_LOCK_MS` (10 min) é marcada `expired` na **primeira leitura** que passar por ela: `getCurrentSession`, `onEsense`, `onHasFinished`, `linkPlayer`, `stopRace`, `raceInProgress`. Não há timer.
-* A marcação é condicional (`WATCH` ou `HSET` só se ainda `active`), e o log `session_expired` sai uma vez, com `sessionId` e `startedAt`.
+* Parar e expirar usam o mesmo script Lua de fechamento: só fecha se a sessão atual ainda tem o `id` lido e está `active`. Assim, um Parar ou uma expiração que leu a sessão A não fecha a B se o jogo largou no meio. O log `session_expired` sai uma vez, com `sessionId` e `startedAt`.
+
+### Descarte só para quem esqueceu
+
+* Só um lado `missing` que termina sem vínculo conta como descarte (`hooks.onDiscarded`, `/health`, alerta "corrida descartada"), com o motivo `no_email_registered` de hoje.
+* `bot` e `nosignup` foram escolha do operador: o `hasFinished` deles loga `has_finished_not_saved` (`info`) e não alerta. Sem isso, toda corrida bot contra bot ou sem cadastro acenderia o alerta vermelho.
 * As listas de pacotes da sessão expirada são apagadas junto.
 
 ### `raceInProgress` (NEU-86)
