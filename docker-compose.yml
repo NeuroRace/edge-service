@@ -13,6 +13,8 @@ services:
 
   broker:
     build: ./data_broker
+    # NEU-154: se o broker cair, o Docker sobe de novo; a fila e a sessao ficam no Redis.
+    restart: unless-stopped
     environment:
       BROKER_PORT: 3000
       REDIS_URL: redis://redis:6379

@@ -29,6 +29,14 @@ function isJsonRequest(req) {
   return String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json');
 }
 
+// NEU-154: so um objeto JSON vale como corpo. `null`, numero, texto ou lista passam no
+// JSON.parse, mas a rota leria campo de `null` e o TypeError derrubava o processo.
+function parseJsonObject(body) {
+  let data;
+  try { data = JSON.parse(body); } catch { return null; }
+  return data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+}
+
 function handleRequeue(req, res, dispatchAdmin, log) {
   if (!isJsonRequest(req)) {
     sendJson(res, 415, { error: 'unsupported_media_type' });
@@ -48,9 +56,9 @@ function handleRequeue(req, res, dispatchAdmin, log) {
   });
   req.on('end', async () => {
     if (aborted) return;
-    let data;
-    try { data = JSON.parse(body); } catch { sendJson(res, 400, { error: 'invalid_json' }); return; }
-    const jobId = data && data.jobId;
+    const data = parseJsonObject(body);
+    if (!data) { sendJson(res, 400, { error: 'invalid_json' }); return; }
+    const jobId = data.jobId;
     if (typeof jobId !== 'string' || jobId === '' || jobId.length > 200) {
       sendJson(res, 400, { error: 'invalid_job_id' });
       return;
@@ -177,7 +185,13 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAd
       return;
     }
 
+    // NEU-154: exige JSON pelo mesmo motivo do requeue (CSRF por formulario de outra pagina).
     if (session && req.method === 'POST' && req.url === '/api/players') {
+      if (!isJsonRequest(req)) {
+        sendJson(res, 415, { error: 'unsupported_media_type' });
+        req.resume();
+        return;
+      }
       let body = '';
       let bodySize = 0;
       let aborted = false;
@@ -197,19 +211,17 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAd
       req.on('end', async () => {
         if (aborted) return;
 
-        let data;
-        try {
-          data = JSON.parse(body);
-        } catch {
+        const data = parseJsonObject(body);
+        if (!data) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'invalid_json' }));
           return;
         }
 
-        const player1Email = String(data.player1Email || '');
-        const player2Email = String(data.player2Email || '');
-
+        // Tudo dentro do try: um erro aqui vira 500, nunca rejeicao solta que derruba o broker.
         try {
+          const player1Email = String(data.player1Email || '');
+          const player2Email = String(data.player2Email || '');
           const result = await session.registerPlayers(player1Email, player2Email);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(result));
