@@ -8,7 +8,17 @@ const BROKER_EVENTS = [
   'raceStarted',
   'hasFinished',
   'gameEvent',
+  // NEU-158: avisos do jogo. Sem estar nesta lista, o broker os ignorava em
+  // silencio — o evento chegava e morria aqui, sem log e sem repasse.
+  'countdownStarted',
+  'raceStopped',
+  'gameHello',
 ];
+
+// NEU-158: comandos que o painel manda para o jogo. Ficam FORA de BROKER_EVENTS
+// porque sao os unicos com dono: so o papel `panel` pode larga-los. Um test-client
+// esquecido aberto, ou o proprio jogo, nao podem dar largada numa corrida.
+const PANEL_COMMAND_EVENTS = ['startRace', 'stopRace'];
 
 function createSocketServer(server, allowedOrigins) {
   return new Server(server, {
@@ -99,11 +109,29 @@ function registerSocketHandlers(io, log, runtimeState, session, presence = null,
       if (!presence || validateEventPayload('acquisitionStatus', payload) !== null) return;
       presence.onEvent(socket.id, 'acquisitionStatus', payload, now());
     });
+
+    // NEU-158: comando do painel para o jogo. `piece` vem do auth do connect, entao
+    // quem nao se apresentou como painel nao passa. Recusa e barulhenta: um comando
+    // engolido em silencio e exatamente o que esta issue veio consertar.
+    for (const event of PANEL_COMMAND_EVENTS) {
+      socket.on(event, (payload) => {
+        if (piece !== 'panel') {
+          runtimeState.markEventRejected();
+          log('warn', 'command_rejected_not_panel', { event, socketId: socket.id, piece });
+          return;
+        }
+        runtimeState.markEventValidated();
+        if (presence) presence.onEvent(socket.id, event, payload, now());
+        log('info', 'event_received', { event, socketId: socket.id, payload, enforced: false });
+        socket.broadcast.emit(event, payload);
+      });
+    }
   });
 }
 
 module.exports = {
   BROKER_EVENTS,
+  PANEL_COMMAND_EVENTS,
   createForwardEventHandler,
   createSocketServer,
   registerSocketHandlers,

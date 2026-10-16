@@ -4,8 +4,15 @@
 // apresenta e e reconhecido como a conexao anonima (fallback da spec, secao 8).
 const PIECES = ['acquisition-p1', 'gesture-p1', 'acquisition-p2', 'gesture-p2'];
 const ROLES_WITH_PLAYER = new Set(['acquisition', 'gesture']);
-const ROLES_WITHOUT_PLAYER = new Set(['panel', 'test-client']);
-const GAME_EVENTS = new Set(['raceStarted', 'hasFinished', 'gameEvent']);
+// NEU-158: 'game' entrou aqui, mas o jogo de hoje conecta SEM auth e continua caindo
+// em 'unidentified'. Por isso as duas chaves contam como jogo em `isGame` — trocar o
+// jogo para `role: game` e do dev, e pode acontecer depois, sem quebrar o painel.
+const ROLES_WITHOUT_PLAYER = new Set(['panel', 'test-client', 'game']);
+const GAME_KEYS = new Set(['game', 'unidentified']);
+const isGame = (key) => GAME_KEYS.has(key);
+// NEU-158: `gameHello` entra junto — ver "o jogo abriu" na lista de eventos
+// recentes do Diagnostico e o que diz ao operador que o jogo reiniciou sozinho.
+const GAME_EVENTS = new Set(['raceStarted', 'hasFinished', 'gameEvent', 'countdownStarted', 'raceStopped', 'gameHello']);
 const META_FIELDS = ['version', 'source', 'eegHost', 'acqPort', 'commit', 'branch', 'camera'];
 const RECENT_GAME_EVENTS = 5;
 
@@ -63,7 +70,12 @@ function createPresence() {
       s.data.eeg = p.eeg ?? null;
       s.data.lastError = p.lastError ?? null;
     }
-    if (s.key === 'unidentified' && GAME_EVENTS.has(event)) {
+    // NEU-158: o jogo diz a versao no `gameHello`. No auth ela so chega se o dev
+    // preencher o ExtraAuth, que nem existe nas versoes antigas do plugin.
+    if (event === 'gameHello' && typeof p.version === 'string' && p.version.length > 0) {
+      s.meta.version = p.version.slice(0, 64);
+    }
+    if (isGame(s.key) && GAME_EVENTS.has(event)) {
       s.lastGameEvent = { event, at: now };
       recentEvents.unshift({ event, at: now });
       recentEvents.length = Math.min(recentEvents.length, RECENT_GAME_EVENTS);
@@ -84,7 +96,7 @@ function createPresence() {
       const latest = mine.reduce((best, s) => ((s.lastEventAt ?? -1) > (best.lastEventAt ?? -1) ? s : best));
       pieces[key] = { ...emptyPiece(), ...latest.data, connected: true, lastEventAt: latest.lastEventAt, meta: { ...latest.meta } };
     }
-    const game = all.filter((s) => s.key === 'unidentified');
+    const game = all.filter((s) => isGame(s.key));
     const lastGameEvent = game.map((s) => s.lastGameEvent).filter(Boolean).sort((a, b) => b.at - a.at)[0] || null;
     const connections = {};
     for (const s of all) connections[s.key] = (connections[s.key] || 0) + 1;
