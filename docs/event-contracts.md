@@ -13,7 +13,8 @@ Este documento registra os contratos observados atualmente na codebase. O objeti
 - Health payload atual: `status`, `service`, `uptimeSeconds`, `connections`, `validatedEvents`, `rejectedEvents`, `discardedRaces`, `lastDiscardedAt`, `dispatcher` (`{enabled:false, reason}` ou `{enabled, target, lastPollAt, lastSuccessAt, lastErrorAt, inFlightJobId, counts:{queue,processing,retrying,deadletter}}`). `status` e sempre `ok` (D11/NEU-69: o estado do dispatcher informa, nunca derruba o broker)
 - Historico do dispatcher: `GET /api/dispatch/history` -> ultimas 20 corridas (`jobId`, `playerId`, `email` mascarado, `status` `sent|deadletter`, `result`, `httpStatus`, `reason`, `attempts`, `at`), mais recente primeiro (`dispatch:history` no Redis)
 - Fila de envio (NEU-143): `GET /api/dispatch/overview` -> `counts` (`waiting`, `retrying`, `sending`, `failed`), `lastSentAt`, `failed[]` (`jobId`, `sessionId`, `playerId`, `email` mascarado, `failedAt`, `reason`, `httpStatus`, `errorCode`, `attempts`, `error`, `retryable`), mais recente primeiro; `POST /api/dispatch/requeue` `{jobId}` -> `200 {ok,jobId}` · `404 not_found` · `409 not_retryable` · `415` sem JSON
-- Eventos repassados sem alteracao: `blink`, `eSense`, `handGesture`, `raceStarted`, `hasFinished`, `gameEvent`
+- Eventos repassados sem alteracao: `blink`, `eSense`, `handGesture`, `raceStarted`, `hasFinished`, `gameEvent`; NEU-158: + `countdownStarted`, `raceStopped`, `gameHello` (avisos do jogo)
+- Comandos do painel para o jogo (NEU-158): `startRace`, `stopRace`. Repassados **so** quando quem envia se apresentou com `auth.role = 'panel'`; de qualquer outro papel sao recusados com `warn command_rejected_not_panel` e contados em `rejectedEvents`
 - Eventos validados no broker nesta fase: `eSense`, `handGesture`
 - Registro (NEU-154): `POST /api/players` `{ player1Email, player2Email }` exige `Content-Type: application/json` (`415` sem ele, CSRF) e corpo que seja **objeto** JSON (`null`, numero, texto ou lista -> `400 invalid_json`); corpo acima de 4096 -> `413`; erro inesperado -> `500`, nunca queda do broker. O mesmo vale para o corpo do requeue.
 - Ultimos jogadores (NEU-141): `GET /api/players/recent` -> `[{ contact, lastAt }]` (contato completo; so cadastrados entram, no registro); `POST /api/players/recent/clear` -> `200 {ok:true}` · `415` sem JSON
@@ -29,10 +30,12 @@ Cada cliente nosso se apresenta no connect do Socket.IO com `auth`. O broker usa
 | `gesture_detector` | `{ role: 'gesture', player: 1\|2, version, commit, branch, camera }` |
 | painel (`public/ops.js`) | `{ role: 'panel' }` |
 | `test_client` | `{ role: 'test-client' }` |
-| jogo (Unreal), `e2e/jogo-falso.js` | nenhum |
+| jogo (Unreal), `e2e/jogo-falso.js` | nenhum hoje; `{ role: 'game', version }` quando o dev do jogo ligar (NEU-146/158) |
 
 - NEU-142: `version` = hash curto (7 hex) do codigo da peca (SHA-256 dos arquivos ordenados, CRLF->LF; `code_version.js`/`code_version.py`). O broker so guarda os metadados `version`, `source`, `eegHost`, `acqPort`, `commit`, `branch`, `camera` (string cortada em 64, numero so se finito). Versoes diferentes entre `acquisition-p1`/`-p2` ou `gesture-p1`/`-p2` viram aviso no painel.
 - `auth` ausente ou invalido nao derruba a conexao: o socket vira "nao identificado", e **conexao nao identificada conta como o jogo** (fallback ate a NEU-146).
+- NEU-158: `role: 'game'` passou a ser reconhecido, e **as duas formas contam como o jogo** — a sem `auth` (hoje) e a com `role: 'game'` (quando o jogo trocar). Assim a troca pode acontecer sem quebrar o indicador do painel.
+- Evento `gameHello` (jogo, ao conectar): `{ "version": "2026-10-20a", "engine": "5.4" }`. Repassado, entra nos eventos recentes do Diagnostico e a `version` fica guardada na conexao do jogo.
 - Evento `gestureStatus` (`gesture_detector`, a cada 2 s): `{ "player": 1, "handSeen": true, "timeStamp": 1760000000000 }`. Validado no broker (`handSeen` booleano) e **nunca repassado**: so atualiza a presenca.
 
 ## Event: `eSense`
