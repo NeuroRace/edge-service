@@ -24,9 +24,35 @@ test('CA: acquisition-p2 parado com gesture-p2 vivo -> Coletor amarelo com o que
   const st = allOk(); st.pieces['acquisition-p2'] = off();
   const r = strip(st);
   assert.equal(r.groups.coletor, 'warn');
-  // A acquisition so conecta no broker depois do EEG (acquisition_runner): sem conexao pode ser
-  // ThinkGear/fone fora OU a peca caida. O texto aponta as duas, a mais provavel primeiro.
-  assert.deepEqual(r.lines, ['acquisition-p2 sem conexão · confira o ThinkGear e o fone do P2 no PC coletor (ou suba as peças)']);
+  // NEU-151: a acquisition conecta no broker ANTES do EEG, entao "sem conexao" so pode
+  // ser a peca fora. ThinkGear fechado tem linha propria, no teste abaixo.
+  assert.deepEqual(r.lines, ['acquisition-p2 desligado · suba as peças do PC coletor']);
+});
+
+// NEU-151: os tres casos que o operador precisa distinguir em ate 30 s (S2 do projeto).
+test('CA: ThinkGear fechado -> peca viva e a linha aponta o ThinkGear, nao as pecas', () => {
+  const st = allOk();
+  st.pieces['acquisition-p2'] = live({ eeg: 'connecting', lastError: 'Connection refused' });
+  const r = strip(st);
+  assert.equal(r.groups.coletor, 'warn');
+  assert.deepEqual(r.lines, ['ThinkGear do P2 fechado · abra o ThinkGear Connector no PC coletor']);
+});
+
+test('CA: fone sem dados com o ThinkGear aberto continua como "sem dados"', () => {
+  const st = allOk();
+  st.pieces['acquisition-p2'] = live({ eeg: 'connected', lastEventAt: T - 11_000 });
+  const r = strip(st);
+  assert.deepEqual(r.lines, ['acquisition-p2 sem dados · confira o fone do P2 no PC coletor']);
+});
+
+// Sem o ramo 'eeg_down' a peca passaria por verde: ela manda acquisitionStatus a cada
+// 2 s, entao o lastEventAt fica fresco mesmo sem nenhum dado de EEG chegando.
+test('CA: EEG fora com noticia fresca nao pode aparecer como OK', () => {
+  const st = allOk();
+  st.pieces['acquisition-p1'] = live({ eeg: 'connecting', lastEventAt: T - 100 });
+  const r = strip(st);
+  assert.equal(r.groups.central, 'warn');
+  assert.deepEqual(r.lines, ['ThinkGear do P1 fechado · abra o ThinkGear Connector no PC central']);
 });
 
 test('CA: PC coletor desligado -> vermelho e uma linha so', () => {

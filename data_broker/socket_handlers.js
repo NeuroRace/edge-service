@@ -93,6 +93,12 @@ function registerSocketHandlers(io, log, runtimeState, session, presence = null,
       if (!presence || validateEventPayload('gestureStatus', payload) !== null) return;
       presence.onEvent(socket.id, 'gestureStatus', payload, now());
     });
+
+    // NEU-151: estado do EEG da acquisition. Mesma regra: so alimenta a presenca.
+    socket.on('acquisitionStatus', (payload) => {
+      if (!presence || validateEventPayload('acquisitionStatus', payload) !== null) return;
+      presence.onEvent(socket.id, 'acquisitionStatus', payload, now());
+    });
   });
 }
 

@@ -18,7 +18,7 @@ test('snapshot: peca esperada sem socket fica desconectada', () => {
   const p = createPresence();
   const s = p.snapshot();
   assert.deepEqual(Object.keys(s.pieces), PIECES);
-  assert.deepEqual(s.pieces['acquisition-p2'], { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null, meta: {} });
+  assert.deepEqual(s.pieces['acquisition-p2'], { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null, eeg: null, lastError: null, meta: {} });
   assert.deepEqual(s.game, { connections: 0, lastGameEvent: null, recentEvents: [] });
 });
 
@@ -29,13 +29,32 @@ test('eSense e gestureStatus atualizam a peca; desconectar tira', () => {
   p.onEvent('a2', 'eSense', { player: 2, attention: 70, poorSignalLevel: 26, source: 'real' }, 500);
   p.onEvent('g2', 'gestureStatus', { player: 2, handSeen: true }, 600);
   let s = p.snapshot();
-  assert.deepEqual(s.pieces['acquisition-p2'], { connected: true, lastEventAt: 500, attention: 70, poorSignalLevel: 26, source: 'real', handSeen: null, meta: {} });
+  assert.deepEqual(s.pieces['acquisition-p2'], { connected: true, lastEventAt: 500, attention: 70, poorSignalLevel: 26, source: 'real', handSeen: null, eeg: null, lastError: null, meta: {} });
   assert.equal(s.pieces['gesture-p2'].handSeen, true);
   assert.equal(s.pieces['gesture-p2'].lastEventAt, 600);
   p.onDisconnect('a2');
   s = p.snapshot();
   assert.equal(s.pieces['acquisition-p2'].connected, false);
   assert.equal(s.pieces['acquisition-p2'].lastEventAt, null);
+});
+
+// NEU-151: o estado do EEG chega por acquisitionStatus e sobrevive ao eSense que
+// vier depois — e o que deixa o painel dizer ThinkGear em vez de "suba as pecas".
+test('acquisitionStatus guarda o estado do EEG e o ultimo erro', () => {
+  const p = createPresence();
+  p.onConnect('a1', { role: 'acquisition', player: 1 }, 100);
+  p.onEvent('a1', 'acquisitionStatus', { player: 1, eeg: 'connecting', lastError: 'Connection refused' }, 500);
+  let s = p.snapshot();
+  assert.equal(s.pieces['acquisition-p1'].eeg, 'connecting');
+  assert.equal(s.pieces['acquisition-p1'].lastError, 'Connection refused');
+  assert.equal(s.pieces['acquisition-p1'].lastEventAt, 500);
+
+  p.onEvent('a1', 'acquisitionStatus', { player: 1, eeg: 'connected', lastError: null }, 900);
+  p.onEvent('a1', 'eSense', { player: 1, attention: 70, poorSignalLevel: 0, source: 'real' }, 950);
+  s = p.snapshot();
+  assert.equal(s.pieces['acquisition-p1'].eeg, 'connected');
+  assert.equal(s.pieces['acquisition-p1'].lastError, null);
+  assert.equal(s.pieces['acquisition-p1'].attention, 70);
 });
 
 test('conectada sem nunca mandar nada: connected sem lastEventAt', () => {
