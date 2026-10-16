@@ -10,7 +10,9 @@ function listen(server) {
 
 function request(port, { method = 'GET', path = '/', body } = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, method, path }, (res) => {
+    // NEU-154: /api/players exige JSON; o painel e o race-producer ja mandam este cabecalho.
+    const headers = body !== undefined ? { 'Content-Type': 'application/json' } : {};
+    const req = http.request({ host: '127.0.0.1', port, method, path, headers }, (res) => {
       let data = '';
       res.on('data', (c) => (data += c));
       res.on('end', () => resolve({ status: res.statusCode, body: data }));
