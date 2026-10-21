@@ -33,6 +33,18 @@ goto docker
 :docker_ok
 echo [1/4] Docker pronto.
 
+rem NEU-157: no evento, so o cabo pode ver as pecas. Conteiner com porta em 0.0.0.0 fica
+rem aberto para quem estiver no Wi-Fi do estande (no teste de 15/10: um Postgres de outro
+rem projeto e um broker antigo). O NeuroRace so publica em 127.0.0.1 e no IP do cabo, entao
+rem tudo que aparecer aqui e de fora. Avisa e nao para: quem decide e o dono do PC.
+for /f "tokens=1,*" %%i in ('docker ps --format "{{.Names}} {{.Ports}}" ^| findstr /l /c:"0.0.0.0:" /c:"[::]:"') do (
+  echo.
+  echo  ATENCAO: o conteiner %%i esta aberto para a rede do evento ^(%%j^).
+  echo  Se ele nao e do NeuroRace, pare durante o evento com:
+  echo    docker stop %%i ^&^& docker update --restart=no %%i
+  echo.
+)
+
 rem O broker so pode existir no central. Um broker aqui recebe o P2 no lugar errado.
 for /f %%i in ('docker ps -q --filter "name=broker"') do (
   echo.
@@ -57,7 +69,7 @@ rem O ThinkGear Connector e o simulador usam a mesma porta 13854 (playbook, 15/1
 rem processo, nao a porta: depois de reiniciar, o simulador volta sozinho e ocupa a porta.
 :thinkgear
 set TG=fechado
-tasklist /fi "imagename eq ThinkGear Connector.exe" | findstr /i /c:"ThinkGear" >/dev/null && set TG=aberto
+tasklist /fi "imagename eq ThinkGear Connector.exe" | findstr /i /c:"ThinkGear" >nul && set TG=aberto
 if "%MODO%"=="simulador" if "%TG%"=="aberto" (
   echo [3/4] O ThinkGear Connector esta ABERTO e ocupa a porta do simulador.
   echo        Feche o ThinkGear Connector ^(icone perto do relogio^). Tentando de novo em 5 s...
