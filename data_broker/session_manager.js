@@ -10,8 +10,8 @@
 // Esta fase NAO envia nada para a Cloud. O `dispatch:queue` e apenas produzido
 // (dado persistido aguardando o dispatcher do Stage 3).
 const { randomUUID } = require('node:crypto');
-// Mesma regra de e-mail da tela de operacao (public/ops_state.js): um so lugar.
-const { normalizeEmail, validateEmail, RACE_LOCK_MS } = require('./public/ops_state');
+// Mesma regra de contato (e-mail ou celular, NEU-160) da tela de operacao (public/ops_state.js): um so lugar.
+const { parseContact, RACE_LOCK_MS } = require('./public/ops_state');
 const { PLAYER_SETUP_KEY } = require('./player_setup');
 const { CLOSE_SCRIPT, LINK_SCRIPT, ENQUEUE_SCRIPT } = require('./session_scripts');
 
@@ -87,17 +87,19 @@ function createSessionManager(redis, config, log, hooks = {}) {
     return { email, uuid: null, validated: false };
   }
 
-  // D15 (NEU-68): normaliza (lower/trim) e valida o formato no edge, sem consultar a
-  // nuvem. Vazio = anonimo (permitido). Invalido -> erro com code/field (HTTP 400).
+  // D15 (NEU-68): normaliza e valida o formato no edge, sem consultar a nuvem. Vazio =
+  // anonimo. Invalido -> erro com code/field (HTTP 400). NEU-160: celular vira +55DDD9XXXXXXXX
+  // e fica no mesmo campo `player{N}Email` (sem renomear chaves do Redis).
   function checkEmail(raw, field) {
-    const email = normalizeEmail(raw);
-    if (!validateEmail(email)) {
-      const err = new Error(`e-mail invalido em ${field}`);
-      err.code = 'invalid_email';
+    const c = parseContact(raw);
+    if (c.error) {
+      const err = new Error(`${c.type === 'phone' ? 'celular' : 'e-mail'} invalido em ${field}`);
+      err.code = c.error.code;
       err.field = field;
+      err.reason = c.error.text;
       throw err;
     }
-    return email;
+    return c.value;
   }
 
   // NEU-86 (spec B2): lado escolhido como Bot no painel nunca e cadastrado nem enviado.
@@ -317,13 +319,16 @@ function createSessionManager(redis, config, log, hooks = {}) {
         return;
       }
 
+      // NEU-160: o contato guardado e e-mail ou celular (+55...). Celular vai em `phone`.
+      const contact = current[`player${playerId}Email`];
+      const isPhone = parseContact(contact).type === 'phone';
       const record = {
         jobId: randomUUID(),
         playerId,
         sessionId: session.id,
         persistedAt: Date.now(),
         payload: {
-          email: current[`player${playerId}Email`],
+          ...(isPhone ? { email: null, phone: contact } : { email: contact }),
           playerUuid: current[`player${playerId}Uuid`] || null,
           startedAt: Number(session.startedAt),
           finishedAt: Date.now(),
@@ -378,8 +383,11 @@ function createSessionManager(redis, config, log, hooks = {}) {
   // ate o hasFinished daquele lado. Atomico contra o claim do hasFinished (LINK_SCRIPT).
   async function linkPlayer(player, rawEmail, expectedId) {
     if (player !== 1 && player !== 2) return { ok: false, error: 'invalid_player' };
-    const email = normalizeEmail(rawEmail);
-    if (!email || !validateEmail(email)) return { ok: false, error: 'invalid_email' };
+    // Nao-texto e vazio seguem invalid_email, como antes da NEU-160.
+    const c = parseContact(typeof rawEmail === 'string' ? rawEmail : '');
+    if (c.type === 'empty') return { ok: false, error: 'invalid_email' };
+    if (c.error) return { ok: false, error: c.error.code };
+    const email = c.value;
     const s = await readSession();
     if (!s || s.status !== 'active') return { ok: false, error: 'no_active_session' };
     // Mesma regra do Parar: a pessoa da corrida que o operador via nao vai para a seguinte.

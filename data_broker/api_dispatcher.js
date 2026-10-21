@@ -28,6 +28,12 @@ function maskEmail(email) {
   return `${user.slice(0, 2)}***@${domain}`;
 }
 
+// NEU-160: celular (+5511987654321) -> "(11) *****-4321": DDD e os 4 ultimos.
+function maskContact(contact) {
+  const m = /^\+55(\d{2})\d{5}(\d{4})$/.exec(typeof contact === 'string' ? contact : '');
+  return m ? `(${m[1]}) *****-${m[2]}` : maskEmail(contact);
+}
+
 function targetOf(apiUrl) {
   try { return new URL(apiUrl).host; } catch { return null; }
 }
@@ -130,7 +136,7 @@ function createDispatcher(
       jobId: record?.jobId ?? null,
       sessionId: record?.sessionId ?? null,
       playerId: record?.playerId ?? null,
-      email: maskEmail(record?.payload?.email),
+      email: maskContact(record?.payload?.phone || record?.payload?.email),
       status, result, httpStatus, reason, attempts, at: now(),
     };
   }
@@ -289,4 +295,4 @@ function createDispatcher(
   return { start, stop, processOnce, recoverProcessing, getState };
 }
 
-module.exports = { createDispatcher, classifyStatus, maskEmail, HISTORY, HISTORY_MAX };
+module.exports = { createDispatcher, classifyStatus, maskEmail, maskContact, HISTORY, HISTORY_MAX };

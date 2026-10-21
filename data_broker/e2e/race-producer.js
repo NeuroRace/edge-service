@@ -7,7 +7,10 @@
 //
 // Uso:
 //   node e2e/race-producer.js --broker http://localhost:3000 \
-//        --emails jogador1@ex.com,jogador2@ex.com --points 8
+//        --contacts jogador1@ex.com,"11 98765-4321" --points 8
+//   NEU-160: cada contato e e-mail ou celular com DDD (`--emails` segue valendo).
+//   `--p2-bot` poe o P2 em Bot no painel antes (P1 contra o bot: 1 registro so) e
+//   volta o P2 para NeuroSky no fim.
 //
 // Guard de seguranca: recusa qualquer --broker que nao seja local (ver race-payloads.js).
 // Ver docs/e2e-local-runbook.md para o fluxo E2E completo (broker + Redis + nuvem local).
@@ -36,13 +39,15 @@ function parseArgs(argv) {
   const args = {
     broker: 'http://localhost:3000',
     emails: 'jogador1@ex.com,jogador2@ex.com',
+    p2Bot: false,
     points: 8,
     settleMs: 300,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const key = argv[i];
     if (key === '--broker') { args.broker = requireVal(argv, i, key); i += 1; }
-    else if (key === '--emails') { args.emails = requireVal(argv, i, key); i += 1; }
+    else if (key === '--p2-bot') { args.p2Bot = true; }
+    else if (key === '--emails' || key === '--contacts') { args.emails = requireVal(argv, i, key); i += 1; }
     else if (key === '--points') { args.points = intArg(requireVal(argv, i, key), key, { min: 1 }); i += 1; }
     else if (key === '--settle-ms') { args.settleMs = intArg(requireVal(argv, i, key), key, { min: 0 }); i += 1; }
     else if (key === '--help' || key === '-h') { args.help = true; }
@@ -54,7 +59,7 @@ function parseArgs(argv) {
 function usage() {
   console.log(
     'Uso: node e2e/race-producer.js --broker http://localhost:3000 ' +
-    '--emails p1@ex.com,p2@ex.com --points 8 [--settle-ms 300]',
+    '--contacts p1@ex.com,"11 98765-4321" --points 8 [--p2-bot] [--settle-ms 300]',
   );
 }
 
@@ -65,10 +70,10 @@ function settle(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function postPlayers(brokerUrl, player1Email, player2Email) {
+function postJson(brokerUrl, path, payload) {
   return new Promise((resolve, reject) => {
-    const url = new URL('/api/players', brokerUrl);
-    const body = JSON.stringify({ player1Email, player2Email });
+    const url = new URL(path, brokerUrl);
+    const body = JSON.stringify(payload);
     const req = http.request(
       url,
       { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
@@ -77,7 +82,7 @@ function postPlayers(brokerUrl, player1Email, player2Email) {
         res.on('data', (c) => { data += c; });
         res.on('end', () => {
           if (res.statusCode === 200) resolve(data);
-          else reject(new Error(`POST /api/players devolveu ${res.statusCode}: ${data}`));
+          else reject(new Error(`POST ${path} devolveu ${res.statusCode}: ${data}`));
         });
       },
     );
@@ -94,16 +99,17 @@ async function main() {
   // GUARD: nunca enviar corrida de teste para alvo remoto.
   assertLocalTarget(args.broker);
 
-  const [player1Email, player2Email] = args.emails.split(',').map((s) => s.trim());
-  if (!player1Email || !player2Email) {
-    throw new Error('--emails precisa de 2 e-mails separados por virgula');
+  const [player1Email, player2Email = ''] = args.emails.split(',').map((s) => s.trim());
+  if (!player1Email || (!player2Email && !args.p2Bot)) {
+    throw new Error('--contacts precisa de 2 contatos (e-mail ou celular) separados por virgula, ou 1 com --p2-bot');
   }
   const points = args.points; // ja validado (inteiro >= 1) em parseArgs
 
-  console.log(`[harness] alvo=${args.broker} pontos=${points} jogadores=${player1Email},${player2Email}`);
+  console.log(`[harness] alvo=${args.broker} pontos=${points} jogadores=${player1Email},${args.p2Bot ? 'Bot' : player2Email}`);
 
-  // 1) Registrar jogadores no endpoint real (o mesmo da futura tela de ops / NEU-68).
-  await postPlayers(args.broker, player1Email, player2Email);
+  // 1) Registrar jogadores no endpoint real (o mesmo da tela de ops / NEU-68).
+  if (args.p2Bot) await postJson(args.broker, '/api/players/source', { player: 2, source: 'bot' });
+  await postJson(args.broker, '/api/players', { player1Email, player2Email: args.p2Bot ? '' : player2Email });
   console.log('[harness] jogadores registrados (POST /api/players 200)');
 
   // 2) Conectar ao broker via Socket.IO.
@@ -139,6 +145,7 @@ async function main() {
   await settle(args.settleMs);
 
   socket.disconnect();
+  if (args.p2Bot) await postJson(args.broker, '/api/players/source', { player: 2, source: 'neurosky' });
   // IMPORTANTE: exit 0 significa que os eventos foram EMITIDOS, nao que foram
   // persistidos — os hooks do broker sao fire-and-forget (sem ack). Confirme a
   // persistencia pelos asserts do runbook (dispatch:queue no Redis / Postgres).
