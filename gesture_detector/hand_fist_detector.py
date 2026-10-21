@@ -2,6 +2,7 @@ import os
 import time
 import cv2
 from broker_client import StatusTicker, WebSocketBrokerClient, gesture_status_payload
+from camera_switch import CameraSwitch, set_camera_handler
 from code_version import code_version, git_info
 import mediapipe as mp
 
@@ -101,15 +102,22 @@ def main():
     BROKER_URL = os.getenv('BROKER_URL', 'http://localhost:3000')
     # NEU-142: indice da camera vem de CAMERA_INDEX (padrao 0, como antes); vai no Diagnostico.
     CAMERA_INDEX = int(os.getenv('CAMERA_INDEX', '0'))
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    cameras = CameraSwitch(CAMERA_INDEX, cv2.VideoCapture)
     detector = HandFistDetector(consecutive_frames_for_event=5)
     meta = {"version": code_version(), "camera": CAMERA_INDEX, **git_info()}
     
     status_ticker = StatusTicker()
 
-    with WebSocketBrokerClient(BROKER_URL, PLAYER_ID, meta=meta) as broker:
+    with WebSocketBrokerClient(BROKER_URL, PLAYER_ID, meta=meta, handlers={"setCamera": set_camera_handler(cameras)}) as broker:
         while True:
-            ret, frame = cap.read()
+            # NEU-86: troca pedida pelo painel, aplicada entre dois frames.
+            previous_error = cameras.error
+            if cameras.apply_pending():
+                print(f"Camera trocada para a Camera {cameras.index + 1}.")
+            elif cameras.error and cameras.error != previous_error:
+                print(f"[WARN] {cameras.error}")
+
+            ret, frame = cameras.capture.read()
             if not ret:
                 print("Não foi possível ler da webcam.")
                 break
@@ -118,12 +126,14 @@ def main():
 
             # NEU-139: sinal de vida a cada 2 s (o painel distingue gesto parado de gesto morto).
             if status_ticker.due():
-                broker.send_event("gestureStatus", gesture_status_payload(PLAYER_ID, detector.last_hand_seen, int(time.time() * 1000)))
+                broker.send_event("gestureStatus", gesture_status_payload(PLAYER_ID, detector.last_hand_seen, int(time.time() * 1000), camera=cameras.index, camera_error=cameras.error))
 
             # Mostra o estado atual na tela
             status_text = "PUNHO FECHADO" if is_closed else "MAO ABERTA/INDEFINIDA"
             cv2.putText(frame, status_text, (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame, f"Camera {cameras.index + 1}", (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
             cv2.imshow("Deteccao de Punho - Pressione 'q' para sair", frame)
 
@@ -140,7 +150,7 @@ def main():
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-    cap.release()
+    cameras.capture.release()
     cv2.destroyAllWindows()
 
 

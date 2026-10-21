@@ -93,3 +93,20 @@ test('GET /api/status devolve o que getStatus monta; sem getStatus = 404', async
     if (expected === 200) assert.deepEqual(JSON.parse(res.body), body);
   }
 });
+
+test('onPieceConnect recebe o socket e a chave da peca; jogo anonimo tambem passa', () => {
+  const { io, connect } = fakeIo();
+  const seen = [];
+  registerSocketHandlers(io, () => {}, createRuntimeState(), null, createPresence(), () => 1, { onPieceConnect: (socket, key) => seen.push([socket.id, key]) });
+  connect('a1', { role: 'acquisition', player: 1 });
+  connect('game', undefined);
+  assert.deepEqual(seen, [['a1', 'acquisition-p1'], ['game', 'unidentified']]);
+});
+
+test('validateEventPayload gestureStatus com camera (NEU-86)', () => {
+  const base = { player: 1, handSeen: true, timeStamp: 1 };
+  assert.equal(validateEventPayload('gestureStatus', { ...base, camera: 2, cameraError: null }), null);
+  assert.equal(validateEventPayload('gestureStatus', { ...base, camera: 0, cameraError: 'Câmera 3 não abriu' }), null);
+  assert.equal(validateEventPayload('gestureStatus', { ...base, camera: 'um' }), 'camera_must_be_number');
+  assert.equal(validateEventPayload('gestureStatus', { ...base, camera: 1, cameraError: 5 }), 'cameraError_must_be_string_or_null');
+});

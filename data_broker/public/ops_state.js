@@ -9,6 +9,10 @@
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+  // NEU-86: fonte e camera ficam travadas durante a corrida, mas so ate 10 min depois
+  // da largada: a sessao nunca expira (L3), e uma corrida esquecida travaria para sempre.
+  const RACE_LOCK_MS = 10 * 60 * 1000;
+
   function normalizeEmail(value) {
     return String(value == null ? '' : value).trim().toLowerCase();
   }
@@ -41,6 +45,29 @@
       return 'racing';
     }
     return 'waiting';
+  }
+
+  // NEU-86 (spec C5): fonte e camera travadas enquanto alguem corre. Mesma janela do
+  // broker (RACE_LOCK_MS): uma sessao esquecida de outro dia nao trava para sempre.
+  // `pending` fica de fora: registrar a proxima dupla nao destrava a corrida atual.
+  function setupLocked({ session, raceEvents, history, now }) {
+    if (!session || session.status !== 'active') return false;
+    if (!(now - Number(session.startedAt) < RACE_LOCK_MS)) return false;
+    return [1, 2].some((slot) => cardState({ slot, session, pending: null, raceEvents, history }) === 'racing');
+  }
+
+  // O seletor mostra a camera EM USO (a que o detector informa). Mostrar a escolha que
+  // falhou enganaria o operador; sem noticia do detector, mostra a escolha guardada.
+  function cameraSelectValue({ chosen, inUse }) {
+    return String(inUse ?? chosen ?? 0);
+  }
+
+  // Linha embaixo do seletor de camera: erro da ultima troca ou troca ainda chegando.
+  function cameraText({ chosen, inUse, error }) {
+    if (error) return String(error);
+    const known = (v) => v !== null && v !== undefined;
+    if (known(chosen) && known(inUse) && chosen !== inUse) return `trocando para a Câmera ${Number(chosen) + 1}…`;
+    return '';
   }
 
   // Leitor/sinal: link pela idade do ultimo pacote; qualidade pelo poorSignalLevel
@@ -254,8 +281,8 @@
       // NEU-151: estado do EEG e o ultimo erro entram no bloco da acquisition — e o
       // que diz ao operador se o problema e o ThinkGear, o fone ou a peca.
       const details = key.startsWith('acquisition')
-        ? [['fonte', dash(meta.source)], ['ThinkGear', meta.eegHost ? `${meta.eegHost}:${dash(meta.acqPort)}` : '—'], ['EEG', p.eeg === 'connecting' ? 'conectando' : p.eeg === 'connected' ? 'conectado' : '—'], ['último erro', dash(p.lastError)], ['Poor Signal', dash(p.poorSignalLevel)], ['atenção', dash(p.attention)], ['último dado', ago(age)]]
-        : [['câmera', meta.camera === undefined ? '—' : `Câmera ${Number(meta.camera) + 1}`], ['mão vista', p.handSeen === null || p.handSeen === undefined ? '—' : p.handSeen ? 'sim' : 'não'], ['última notícia', ago(age)]];
+        ? [['fonte', dash(p.source ?? meta.source)], ['ThinkGear', meta.eegHost ? `${meta.eegHost}:${dash(meta.acqPort)}` : '—'], ['EEG', p.eeg === 'connecting' ? 'conectando' : p.eeg === 'connected' ? 'conectado' : '—'], ['último erro', dash(p.lastError)], ['Poor Signal', dash(p.poorSignalLevel)], ['atenção', dash(p.attention)], ['último dado', ago(age)]]
+        : [['câmera', (p.camera ?? meta.camera) === undefined || (p.camera ?? meta.camera) === null ? '—' : `Câmera ${Number(p.camera ?? meta.camera) + 1}`], ['mão vista', p.handSeen === null || p.handSeen === undefined ? '—' : p.handSeen ? 'sim' : 'não'], ['última notícia', ago(age)]];
       return { key, level: st, word: DIAG_WORD[st], version: versionLabel(key, meta), line: st === 'ok' ? null : pieceLine(key, st), details };
     }
     const conns = status.connections || {};
@@ -295,5 +322,5 @@
     return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, cameraText, cameraSelectValue };
 }));

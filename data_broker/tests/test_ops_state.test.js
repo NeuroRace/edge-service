@@ -94,3 +94,32 @@ test('test_OpsState_queue_stuck_counts_retrying_races (NEU-92)', () => {
   assert.ok(stuck, 'nuvem fora: corridas reagendadas tambem contam como fila parada');
   assert.match(stuck.text, /^2 corrida\(s\) aguardando envio/);
 });
+
+test('setupLocked: trava enquanto alguem corre, ate 10 min da largada (NEU-86)', () => {
+  const { setupLocked, RACE_LOCK_MS } = require('../public/ops_state');
+  const now = 1_000_000_000;
+  const racing = { status: 'active', sessionId: 's1', startedAt: now - 60_000, player1Email: 'a@x.com', player2Email: '', player1IsBot: false, player2IsBot: true };
+  assert.equal(setupLocked({ session: { status: 'none' }, raceEvents: {}, history: [], now }), false);
+  assert.equal(setupLocked({ session: racing, raceEvents: { 1: false, 2: false }, history: [], now }), true);
+  assert.equal(setupLocked({ session: { ...racing, player1Finished: true }, raceEvents: {}, history: [], now }), false);
+  assert.equal(setupLocked({ session: { ...racing, startedAt: now - RACE_LOCK_MS - 1 }, raceEvents: {}, history: [], now }), false, 'sessao esquecida nao trava');
+  assert.equal(setupLocked({ session: { ...racing, player1IsBot: true }, raceEvents: {}, history: [], now }), false, 'bot x bot nao trava');
+  assert.equal(setupLocked({ session: { ...racing, pending: { player1Email: 'b@x.com', player2Email: '' } }, raceEvents: {}, history: [], now }), true, 'proxima dupla registrada nao destrava');
+});
+
+test('cameraText: erro, troca em andamento ou nada (NEU-86)', () => {
+  const { cameraText } = require('../public/ops_state');
+  assert.equal(cameraText({ chosen: 2, inUse: 0, error: 'Câmera 3 não abriu; voltou para a Câmera 1' }), 'Câmera 3 não abriu; voltou para a Câmera 1');
+  assert.equal(cameraText({ chosen: 2, inUse: 0, error: null }), 'trocando para a Câmera 3…');
+  assert.equal(cameraText({ chosen: 1, inUse: 1, error: null }), '');
+  assert.equal(cameraText({ chosen: null, inUse: 0, error: null }), '');
+  assert.equal(cameraText({ chosen: 1, inUse: null, error: null }), '');
+});
+
+test('cameraSelectValue: o seletor mostra a camera em uso, nao a escolha que falhou (NEU-86)', () => {
+  const { cameraSelectValue } = require('../public/ops_state');
+  assert.equal(cameraSelectValue({ chosen: 2, inUse: 1 }), '1');
+  assert.equal(cameraSelectValue({ chosen: 2, inUse: null }), '2', 'detector sem noticia: mostra a escolha');
+  assert.equal(cameraSelectValue({ chosen: null, inUse: 0 }), '0');
+  assert.equal(cameraSelectValue({ chosen: null, inUse: null }), '0');
+});

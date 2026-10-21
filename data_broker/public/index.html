@@ -34,6 +34,16 @@
       <form id="register-form" class="cards" novalidate>
         <div class="card" data-slot="1">
           <div class="card-head"><span class="slot">Jogador 1</span><span class="state-chip mono" data-state-chip="1">Aguardando</span></div>
+          <div class="setup-row">
+            <div class="seg" role="group" aria-label="Fonte do jogador 1">
+              <button type="button" class="seg-btn" data-source-btn="1" data-source="neurosky" aria-pressed="true">NeuroSky</button>
+              <button type="button" class="seg-btn" data-source-btn="1" data-source="bot" aria-pressed="false">Bot</button>
+            </div>
+            <label class="camera-pick"><span class="label">Câmera</span>
+              <select data-camera="1" aria-label="Câmera do jogador 1"><option value="0">Câmera 1</option><option value="1">Câmera 2</option><option value="2">Câmera 3</option></select>
+            </label>
+          </div>
+          <div class="setup-msg mono" data-setup-msg="1" hidden></div>
           <label class="label" for="email1">E-mail (deixe em branco para anônimo)</label>
           <input id="email1" name="player1Email" type="email" autocomplete="off" spellcheck="false" placeholder="jogador@exemplo.com" inputmode="email">
           <div class="field-error mono" data-error="1" hidden></div>
@@ -43,6 +53,16 @@
         </div>
         <div class="card" data-slot="2">
           <div class="card-head"><span class="slot">Jogador 2</span><span class="state-chip mono" data-state-chip="2">Aguardando</span></div>
+          <div class="setup-row">
+            <div class="seg" role="group" aria-label="Fonte do jogador 2">
+              <button type="button" class="seg-btn" data-source-btn="2" data-source="neurosky" aria-pressed="true">NeuroSky</button>
+              <button type="button" class="seg-btn" data-source-btn="2" data-source="bot" aria-pressed="false">Bot</button>
+            </div>
+            <label class="camera-pick"><span class="label">Câmera</span>
+              <select data-camera="2" aria-label="Câmera do jogador 2"><option value="0">Câmera 1</option><option value="1">Câmera 2</option><option value="2">Câmera 3</option></select>
+            </label>
+          </div>
+          <div class="setup-msg mono" data-setup-msg="2" hidden></div>
           <label class="label" for="email2">E-mail (deixe em branco para anônimo)</label>
           <input id="email2" name="player2Email" type="email" autocomplete="off" spellcheck="false" placeholder="jogador@exemplo.com" inputmode="email">
           <div class="field-error mono" data-error="2" hidden></div>

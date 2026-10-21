@@ -1,7 +1,7 @@
 // NEU-139: quem esta conectado ao broker e quando deu noticia.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createPresence, keyFromAuth, PIECES } = require('../presence');
+const { createPresence, keyFromAuth, PIECES, buildStatus } = require('../presence');
 
 test('keyFromAuth: papeis validos, player como string e auth invalido', () => {
   assert.equal(keyFromAuth({ role: 'acquisition', player: 1 }), 'acquisition-p1');
@@ -18,7 +18,7 @@ test('snapshot: peca esperada sem socket fica desconectada', () => {
   const p = createPresence();
   const s = p.snapshot();
   assert.deepEqual(Object.keys(s.pieces), PIECES);
-  assert.deepEqual(s.pieces['acquisition-p2'], { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null, eeg: null, lastError: null, meta: {} });
+  assert.deepEqual(s.pieces['acquisition-p2'], { connected: false, lastEventAt: null, attention: null, poorSignalLevel: null, source: null, handSeen: null, eeg: null, lastError: null, camera: null, cameraError: null, meta: {} });
   assert.deepEqual(s.game, { connections: 0, lastGameEvent: null, recentEvents: [] });
 });
 
@@ -29,7 +29,7 @@ test('eSense e gestureStatus atualizam a peca; desconectar tira', () => {
   p.onEvent('a2', 'eSense', { player: 2, attention: 70, poorSignalLevel: 26, source: 'real' }, 500);
   p.onEvent('g2', 'gestureStatus', { player: 2, handSeen: true }, 600);
   let s = p.snapshot();
-  assert.deepEqual(s.pieces['acquisition-p2'], { connected: true, lastEventAt: 500, attention: 70, poorSignalLevel: 26, source: 'real', handSeen: null, eeg: null, lastError: null, meta: {} });
+  assert.deepEqual(s.pieces['acquisition-p2'], { connected: true, lastEventAt: 500, attention: 70, poorSignalLevel: 26, source: 'real', handSeen: null, eeg: null, lastError: null, camera: null, cameraError: null, meta: {} });
   assert.equal(s.pieces['gesture-p2'].handSeen, true);
   assert.equal(s.pieces['gesture-p2'].lastEventAt, 600);
   p.onDisconnect('a2');
@@ -91,4 +91,21 @@ test('jogo = conexoes nao identificadas; painel e test-client nao contam', () =>
 test('evento de socket desconhecido e ignorado', () => {
   const p = createPresence();
   assert.doesNotThrow(() => p.onEvent('nope', 'eSense', { attention: 1 }, 1));
+});
+
+test('gestureStatus guarda a camera em uso e o erro da ultima troca (NEU-86)', () => {
+  const p = createPresence();
+  p.onConnect('g1', { role: 'gesture', player: 1 }, 100);
+  p.onEvent('g1', 'gestureStatus', { player: 1, handSeen: true, timeStamp: 1, camera: 2, cameraError: 'x'.repeat(500) }, 200);
+  const g = p.snapshot().pieces['gesture-p1'];
+  assert.equal(g.camera, 2);
+  assert.equal(g.cameraError.length, 200);
+  p.onEvent('g1', 'gestureStatus', { player: 1, handSeen: true, timeStamp: 2 }, 300); // detector antigo, sem camera
+  assert.equal(p.snapshot().pieces['gesture-p1'].camera, 2);
+});
+
+test('buildStatus inclui o setup dos jogadores (NEU-86)', () => {
+  const setup = { 1: { source: 'bot', camera: null }, 2: { source: 'neurosky', camera: 1 } };
+  const s = buildStatus({ presence: createPresence(), redisStatus: 'ready', brokerVersion: 'abc1234', startedAt: 0, now: 1000, setup });
+  assert.deepEqual(s.setup, setup);
 });

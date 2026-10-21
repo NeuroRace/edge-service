@@ -37,6 +37,26 @@ Cada cliente nosso se apresenta no connect do Socket.IO com `auth`. O broker usa
 - NEU-158: `role: 'game'` passou a ser reconhecido, e **as duas formas contam como o jogo** — a sem `auth` (hoje) e a com `role: 'game'` (quando o jogo trocar). Assim a troca pode acontecer sem quebrar o indicador do painel.
 - Evento `gameHello` (jogo, ao conectar): `{ "version": "2026-10-20a", "engine": "5.4" }`. Repassado, entra nos eventos recentes do Diagnostico e a `version` fica guardada na conexao do jogo.
 - Evento `gestureStatus` (`gesture_detector`, a cada 2 s): `{ "player": 1, "handSeen": true, "timeStamp": 1760000000000 }`. Validado no broker (`handSeen` booleano) e **nunca repassado**: so atualiza a presenca.
+  - NEU-86: o `gestureStatus` pode levar tambem `camera` (indice em uso, numero) e `cameraError` (texto da ultima troca que falhou, ou `null`). Os dois sao opcionais: detector antigo nao manda.
+
+## Comandos do broker para as pecas (NEU-86)
+
+O broker manda, so para a peca daquele jogador:
+
+| Evento | Para | Corpo | Quando |
+| -- | -- | -- | -- |
+| `setSource` | `acquisition-pN` | `{ "source": "neurosky" \| "bot" }` | na conexao (sempre) e quando o operador troca |
+| `setCamera` | `gesture-pN` | `{ "camera": 0 \| 1 \| 2 }` | na conexao (so se houver escolha guardada) e quando o operador troca |
+
+- `neurosky` = o leitor configurado (`EEG_HOST:ACQ_PORT`, rotulo `SOURCE`). `bot` = gerador dentro da acquisition (rotulo `bot`). A acquisition troca sem cair do broker.
+- Se a camera nova nao abrir, o detector volta para a anterior e manda o erro no `cameraError`.
+- Valor desconhecido e ignorado (log `set_source_ignored` na acquisition). Peca antiga sem o handler ignora em silencio.
+- A escolha fica no hash Redis `players:setup` (`p1Source`, `p2Source`, `p1Camera`, `p2Camera`) e aparece em `GET /api/status` como `setup: { "1": { "source", "camera" }, "2": { ... } }` (`camera` = `null` sem escolha).
+- Rotas (exigem `Content-Type: application/json`, corpo ate 4096 bytes):
+  - `POST /api/players/source` com `{ "player": 1|2, "source": "neurosky"|"bot" }`;
+  - `POST /api/players/camera` com `{ "player": 1|2, "camera": 0|1|2 }`;
+  - respostas: `200 { ok, setup }`, `400` (`invalid_player`, `invalid_source`, `invalid_camera`, `invalid_json`), `409 race_in_progress` (alguem humano correndo, ate 10 min da largada), `413`, `415`.
+- **Bot nunca sobe (spec B2):** na largada, o lado com `pNSource = bot` vira bot na sessao (e-mail vazio), seja qual for o `source` dos pacotes. No registro, o e-mail de um lado em Bot e ignorado.
 
 ## Event: `eSense`
 
