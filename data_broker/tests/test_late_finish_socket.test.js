@@ -32,6 +32,7 @@ function makeStand() {
     now: () => clock.t,
     onDiscarded: (d) => discards.push(d),
   });
+  current = session;
   const { io, connect } = fakeIo();
   registerSocketHandlers(io, () => {}, createRuntimeState(), session);
   const jogo = connect('jogo', undefined);
@@ -40,8 +41,11 @@ function makeStand() {
   return { redis, session, logs, discards, clock, jogo, fone1, fone2 };
 }
 
-// Espera a fila da sessao esvaziar: os ganchos rodam em fire-and-forget.
-const settle = () => new Promise((r) => setTimeout(r, 50));
+// Revisao do #41: em vez de um tempo fixo (instavel num CI lento), espera a fila da sessao
+// esvaziar. Um eSense de bot entra no fim da fila e nao grava nada: quando ele termina, tudo o
+// que o socket emitiu antes ja terminou.
+let current = null;
+const settle = () => current.onEsense({ source: 'bot' });
 
 async function largar(stand) {
   await stand.session.registerPlayers('a@x.com', '11 98765-4321');

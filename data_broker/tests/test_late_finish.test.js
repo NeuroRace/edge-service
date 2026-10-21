@@ -158,7 +158,11 @@ test('test_LateFinish_panel_warns_while_that_race_is_open', () => {
   assert.equal(warn.level, 'warn');
   assert.match(warn.text, /P2 ignorada: veio 0,5 s depois da largada \(o mínimo é 15 s\)/);
   assert.match(warn.text, /Parar corrida/);
-  for (const session of [{ status: 'active', sessionId: 'C' }, { status: 'stopped', sessionId: 'B' }, { status: 'none' }]) {
+  for (const session of [
+    { status: 'active', sessionId: 'C' }, { status: 'stopped', sessionId: 'B' }, { status: 'none' },
+    // Revisao do #41: o P2 chegou de verdade depois (o P1 pode estar correndo): o aviso some.
+    { status: 'active', sessionId: 'B', player2Finished: true },
+  ]) {
     assert.ok(!S.alerts({ ...base, session }).some((a) => a.code === 'finish_ignored'), `sem aviso em ${JSON.stringify(session)}`);
   }
 });
