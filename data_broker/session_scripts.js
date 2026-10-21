@@ -4,7 +4,8 @@
 // uma conexao so, e o EXEC de qualquer outro trecho desfaz o WATCH. O tests/fake_redis.js
 // implementa a mesma logica em JS; os testes de integracao conferem o Lua de verdade.
 
-// Fecha a sessao `id` (Parar = cancelled, 10 min = expired) e apaga os pacotes dela.
+// Fecha a sessao `id` (Parar = cancelled, 10 min = expired, raceStopped do jogo = stopped)
+// e apaga os pacotes dela.
 // KEYS: session:current, pacotes P1, pacotes P2. ARGV: id, status, closedAt.
 // Devolve 1 se fechou; 0 se a sessao atual e outra (o jogo largou no meio) ou ja fechou.
 const CLOSE_SCRIPT = `

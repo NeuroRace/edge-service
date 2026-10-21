@@ -50,6 +50,8 @@ function kindOf(session, n) {
 function createSessionManager(redis, config, log, hooks = {}) {
   const now = typeof hooks.now === 'function' ? hooks.now : Date.now;
   const minEegPackets = Number(config?.minEegPackets) || 1;
+  // NEU-179: sem config (testes) nao ha piso; no estande vem do config.js (15 s).
+  const minRaceMs = Math.max(0, Number(config?.minRaceSeconds) || 0) * 1000;
   const SESSION_KEY = 'session:current';
   const packetsKey = (id, n) => `session:${id}:player:${n}:packets`;
   // eSense de sessao fechada: um log por sessao, nao um por pacote (1/s por jogador).
@@ -247,6 +249,18 @@ function createSessionManager(redis, config, log, hooks = {}) {
       return;
     }
 
+    // NEU-179: o hasFinished nao diz de qual corrida e. Um atrasado da corrida anterior
+    // caia nesta com tempo falso (0,45 s no teste) e ganhava a rodada. Antes do piso, ignora
+    // SEM o claim: a chegada de verdade deste lado ainda conta.
+    const elapsedMs = now() - Number(session.startedAt);
+    if (minRaceMs > 0 && elapsedMs < minRaceMs) {
+      log('warn', 'has_finished_too_soon', { playerId, sessionId: session.id, elapsedMs, minRaceMs });
+      if (typeof hooks.onFinishIgnored === 'function') {
+        hooks.onFinishIgnored({ playerId, sessionId: session.id, reason: 'too_soon' });
+      }
+      return;
+    }
+
     const dispatchedKey = `player${playerId}Dispatched`;
 
     // Claim atomico primeiro (bug H3: HSETNX), depois a releitura. NEU-140: depois do claim
@@ -379,6 +393,22 @@ function createSessionManager(redis, config, log, hooks = {}) {
     return { ok: true, sessionId: s.id };
   }
 
+  // NEU-179: o jogo avisa que parou e voltou para a espera. Fecha a sessao, e o painel libera
+  // o Largar sem precisar do Parar. Quem ja chegou fica na fila; quem nao chegou perde a
+  // corrida, como no Parar. Um raceStopped atrasado da corrida anterior chegaria logo depois
+  // da largada desta: antes do piso, ele e ignorado.
+  async function onRaceStopped() {
+    const at = now();
+    const s = await readSession(at);
+    if (!s || s.status !== 'active') return;
+    const afterMs = at - Number(s.startedAt);
+    if (minRaceMs > 0 && afterMs < minRaceMs) {
+      log('warn', 'race_stopped_too_soon', { sessionId: s.id, afterMs, minRaceMs });
+      return;
+    }
+    if (await closeSession(s.id, 'stopped', at)) log('info', 'race_stopped_by_game', { sessionId: s.id, afterMs });
+  }
+
   // NEU-140: o jogo largou sem registro (lado missing); o operador vincula o contato
   // ate o hasFinished daquele lado. Atomico contra o claim do hasFinished (LINK_SCRIPT).
   async function linkPlayer(player, rawEmail, expectedId) {
@@ -461,7 +491,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
     log('info', 'recent_players_cleared', {});
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress, stopRace, linkPlayer };
+  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, onRaceStopped, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress, stopRace, linkPlayer };
 }
 
 module.exports = { createSessionManager, execMulti, RECENT_PLAYERS_MAX };

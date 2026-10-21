@@ -75,6 +75,10 @@ function createForwardEventHandler({ log, socket, event, runtimeState, session, 
         session.onHasFinished(payload).catch((err) =>
           log('error', 'session_has_finished_error', { playerId: payload?.playerId, error: err?.message ?? String(err) }),
         );
+      } else if (event === 'raceStopped' && typeof session.onRaceStopped === 'function') {
+        session.onRaceStopped().catch((err) =>
+          log('error', 'session_race_stopped_error', { error: err?.message ?? String(err) }),
+        );
       }
     }
   };

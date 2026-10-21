@@ -63,7 +63,7 @@ O broker manda, so para a peca daquele jogador:
 
 - `POST /api/players` aceita `player1NoSignup`/`player2NoSignup` (so `true` booleano vale). Lado NeuroSky com e-mail vazio **sem** `NoSignup` -> `400 missing_contact` com `field`. Lado em Bot ignora os dois.
 - `session:current` ganha `playerNKind`: `contact` (vai para a nuvem), `nosignup` (marcado de proposito), `bot` (escolha do painel), `missing` (o jogo largou sem registro). `playerNIsBot` continua = "nao vai para a nuvem" (`false` so para `contact`).
-- `status`: `active`, `cancelled` (Parar) ou `expired` (10 min da largada, `RACE_LOCK_MS`; aplicado na primeira leitura). Em sessao fechada, `eSense` e `hasFinished` sao ignorados com log (`esense_ignored_closed_session`, uma vez por sessao; `has_finished_ignored_closed_session`).
+- `status`: `active`, `cancelled` (Parar), `expired` (10 min da largada, `RACE_LOCK_MS`; aplicado na primeira leitura) ou `stopped` (NEU-179: o jogo mandou `raceStopped`; quem ja chegou fica na fila, quem nao chegou perde a corrida, como no Parar). Em sessao fechada, `eSense` e `hasFinished` sao ignorados com log (`esense_ignored_closed_session`, uma vez por sessao; `has_finished_ignored_closed_session`).
 - Fechar (Parar/expirar) e vincular sao scripts Lua atomicos (`session_scripts.js`) que conferem o `id` da sessao: um Parar que leu a sessao A nao fecha a B se o jogo largou no meio.
 - O `hasFinished` reivindica o lado (`HSETNX playerNDispatched`) **antes** de ler a sessao; depois disso nenhum vinculo grava.
 - So `missing` conta como descarte (`/health`, `no_email_registered`). `bot` e `nosignup` logam `has_finished_not_saved`.
@@ -73,6 +73,7 @@ O broker manda, so para a peca daquele jogador:
   - `sessionId` (opcional, texto) = a corrida que o painel via. Se o jogo largou outra no meio, a resposta e `409 session_changed` e nada muda (o painel sempre manda).
 - `GET /api/session/current` ganha `player1Kind`/`player2Kind` (e `pending.playerNKind`).
 - **Limitacao:** o jogo nao manda id de corrida. Um `hasFinished` atrasado que chega **depois da largada seguinte** cai na corrida nova. A solucao (id no `raceStarted`/`hasFinished`) esta na NEU-146.
+- **Defesa barata (NEU-179):** `hasFinished` que chega antes de `MIN_RACE_SECONDS` (padrao 15 s, contado da largada) e ignorado **sem** reivindicar o lado: log `has_finished_too_soon`, contador `ignoredFinishes`/`lastIgnoredFinishAt` no `/health`, e a chegada de verdade daquele lado ainda conta. Um `raceStopped` antes do piso tambem e ignorado (`race_stopped_too_soon`), para o aviso atrasado da corrida anterior nao derrubar a que acabou de largar. Chegada atrasada que cai **depois** do piso continua passando. `MIN_RACE_SECONDS=0` desliga.
 
 ## Event: `eSense`
 
