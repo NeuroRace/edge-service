@@ -13,7 +13,7 @@ function toCanonicalBody(record) {
     race_id: record.sessionId,
     player_slot: record.playerId,
     // NEU-160: vem um dos dois. Celular so com a nuvem da NEU-159; antes dela, a nuvem
-    // recusa (400) e a corrida fica em "Nao subiram" para reenviar.
+    // recusa (422) e a corrida fica em "Nao subiram" para reenviar.
     ...(payload.phone ? { player_phone: payload.phone } : { player_email: payload.email }),
     player_uuid: payload.playerUuid ?? null,
     source: 'real',
