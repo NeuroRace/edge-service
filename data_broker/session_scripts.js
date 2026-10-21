@@ -31,13 +31,15 @@ return 'ok'
 // Enfileira o resultado do lado N so se a sessao `id` ainda estiver aberta, e apaga a lista
 // de pacotes. Atomico contra o CLOSE_SCRIPT: um Parar no meio do hasFinished nao deixa a
 // corrida entrar na fila com o painel dizendo "nada foi gravado" (revisao do PR #32).
-// KEYS: session:current, dispatch:queue, pacotes do lado. ARGV: id, registro (JSON).
+// KEYS: session:current, dispatch:queue, pacotes do lado. ARGV: id, registro (JSON) e,
+// opcional, o campo que marca o lado como gravado (revisao do #36: o Parar diz quem ja foi).
 // Devolve 1 se enfileirou; 0 se a sessao atual e outra ou ja fechou.
 const ENQUEUE_SCRIPT = `
 if redis.call('HGET', KEYS[1], 'id') ~= ARGV[1] then return 0 end
 if redis.call('HGET', KEYS[1], 'status') ~= 'active' then return 0 end
 redis.call('RPUSH', KEYS[2], ARGV[2])
 redis.call('DEL', KEYS[3])
+if ARGV[3] then redis.call('HSET', KEYS[1], ARGV[3], 'true') end
 return 1
 `;
 

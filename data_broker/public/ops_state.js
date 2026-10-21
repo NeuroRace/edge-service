@@ -127,6 +127,9 @@
     for (const slot of [1, 2]) {
       const s = slots[slot] || {};
       if (s.source === 'bot') continue;
+      // Revisao do #37: o campo de quem corre fica travado com o contato em uso. Registrar
+      // agora mandaria esse contato para a proxima dupla.
+      if (s.state === 'racing') { out.push({ slot, code: 'side_racing', text: `P${slot} ainda está correndo: espere a chegada para registrar a próxima dupla` }); continue; }
       if (s.state === 'missing') { out.push({ slot, code: 'link_first', text: `P${slot}: corrida sem cadastro, use Vincular` }); continue; }
       const c = parseContact(s.email);
       if (c.error) out.push({ slot, code: c.error.code, text: `P${slot}: ${c.error.text}` });
@@ -151,7 +154,8 @@
 
   // Largar trava com o motivo ao lado: as travas do Registrar e mais as do jogo.
   function startBlockers({ register, gameConnected, panelConnected, sessionActive, sources }) {
-    const out = [...register];
+    // Com corrida em andamento, o "race_active" abaixo ja diz o motivo: um texto so.
+    const out = register.filter((b) => !(sessionActive && b.code === 'side_racing'));
     if (sources[1] === 'bot' && sources[2] !== 'bot') out.push({ code: 'human_on_p2', text: 'Com um jogador só, ele joga no P1: ponha o P1 em NeuroSky e o P2 em Bot' });
     if (!panelConnected) out.push({ code: 'panel_offline', text: 'Painel sem conexão com o broker' });
     if (!gameConnected) out.push({ code: 'game_down', text: 'Jogo não conectado' });
@@ -443,5 +447,15 @@
     return items.filter((p) => String(p.contact || '').toLowerCase().includes(q));
   }
 
-  return { normalizeEmail, validateEmail, parseContact, formatContact,cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, contactLocked, startRacePayload, startBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
+  // Revisao do #36: depois do Parar, diz quem ja tinha o tempo gravado (estava na fila antes do Parar).
+  function stopFeedback({ saved, told }) {
+    const tail = told ? 'O jogo volta para a espera.' : 'Pare também no jogo.';
+    const s = Array.isArray(saved) ? saved.filter((n) => n === 1 || n === 2) : [];
+    if (s.length === 0) return `Corrida parada, nada foi gravado. ${tail}`;
+    if (s.length === 2) return `Corrida parada. Os tempos do P1 e do P2 já tinham sido gravados e vão para o site. ${tail}`;
+    const other = s[0] === 1 ? 2 : 1;
+    return `Corrida parada. O tempo do P${s[0]} já tinha sido gravado e vai para o site; o do P${other} não foi gravado. ${tail}`;
+  }
+
+  return { stopFeedback, normalizeEmail, validateEmail, parseContact, formatContact,cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, contactLocked, startRacePayload, startBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
 }));

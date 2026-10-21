@@ -218,7 +218,10 @@
     if (!armed || !S.stopArmValid({ armedSessionId: armed.sessionId, session: st.session })) {
       disarmStop();
       armed = { sessionId: st.session.sessionId, contacts: { 1: st.session.player1Kind === 'contact' ? st.session.player1Email : '', 2: st.session.player2Kind === 'contact' ? st.session.player2Email : '' } };
-      stopBtn.dataset.armed = 'true'; stopBtn.textContent = 'Confirmar: parar sem gravar?';
+      // Revisao do #36: quem ja chegou ja esta gravado; o Parar so vale para o resto.
+      const done = [1, 2].filter((n) => st.session[`player${n}Saved`]);
+      stopBtn.dataset.armed = 'true';
+      stopBtn.textContent = done.length ? `Confirmar: parar? (o P${done.join(' e o P')} já foi gravado)` : 'Confirmar: parar sem gravar?';
       stopArmTimer = setTimeout(disarmStop, 5000);
       return;
     }
@@ -232,13 +235,14 @@
       // NEU-140: o jogo so precisa do evento (Thiago, 20/10). Sem broker no socket, pare a mao.
       const told = res.ok && !!(socket && st.socketOk);
       if (told) socket.emit('stopRace', {});
-      $('#register-hint').textContent = told ? 'Corrida parada, nada foi gravado. O jogo volta para a espera.'
-        : res.ok ? 'Corrida parada, nada foi gravado. Pare também no jogo.'
+      $('#register-hint').textContent = res.ok ? S.stopFeedback({ saved: body.saved, told })
         : body.error === 'session_changed' ? 'A corrida mudou antes da confirmação: nada foi parado. Confira e pare de novo.'
           : res.status === 409 ? 'Não há corrida em andamento.' : `Falha ao parar (${res.status}).`;
       await refresh();
       if (res.ok && !st.session.pending && !$('#email1').value && !$('#email2').value) {
-        for (const slot of [1, 2]) if (stopped[slot] && !$(`#email${slot}`).disabled) $(`#email${slot}`).value = S.formatContact(stopped[slot]);
+        // Quem ja foi gravado nao volta para o campo: correr de novo seria outra corrida dele.
+        const saved = Array.isArray(body.saved) ? body.saved : [];
+        for (const slot of [1, 2]) if (stopped[slot] && !saved.includes(slot) && !$(`#email${slot}`).disabled) $(`#email${slot}`).value = S.formatContact(stopped[slot]);
         renderBlockers();
       }
     } catch (e) {
