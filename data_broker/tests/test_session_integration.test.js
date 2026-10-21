@@ -147,6 +147,21 @@ test('integracao NEU-140: Parar e depois hasFinished = fila sem mudanca; a proxi
   });
 });
 
+test('integracao NEU-140: enfileirar so com a sessao aberta (Lua real)', { skip }, async () => {
+  await withRedis(async (redis) => {
+    const { ENQUEUE_SCRIPT } = require('../session_scripts');
+    await redis.hset('session:current', 'id', 's1', 'status', 'cancelled', 'startedAt', '1');
+    await redis.rpush('session:s1:player:1:packets', 'x');
+    assert.equal(await redis.eval(ENQUEUE_SCRIPT, 3, 'session:current', 'dispatch:queue', 'session:s1:player:1:packets', 's1', '{}'), 0);
+    assert.equal(await redis.llen('dispatch:queue'), 0);
+    await redis.hset('session:current', 'status', 'active');
+    assert.equal(await redis.eval(ENQUEUE_SCRIPT, 3, 'session:current', 'dispatch:queue', 'session:s1:player:1:packets', 'outra', '{}'), 0);
+    assert.equal(await redis.eval(ENQUEUE_SCRIPT, 3, 'session:current', 'dispatch:queue', 'session:s1:player:1:packets', 's1', '{"ok":1}'), 1);
+    assert.deepEqual(await redis.lrange('dispatch:queue', 0, -1), ['{"ok":1}']);
+    assert.equal(await redis.exists('session:s1:player:1:packets'), 0);
+  });
+});
+
 test('integracao NEU-140: fechar confere o id (Lua real)', { skip }, async () => {
   await withRedis(async (redis) => {
     const { CLOSE_SCRIPT } = require('../session_scripts');

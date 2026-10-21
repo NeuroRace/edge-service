@@ -13,7 +13,7 @@ const { randomUUID } = require('node:crypto');
 // Mesma regra de e-mail da tela de operacao (public/ops_state.js): um so lugar.
 const { normalizeEmail, validateEmail, RACE_LOCK_MS } = require('./public/ops_state');
 const { PLAYER_SETUP_KEY } = require('./player_setup');
-const { CLOSE_SCRIPT, LINK_SCRIPT } = require('./session_scripts');
+const { CLOSE_SCRIPT, LINK_SCRIPT, ENQUEUE_SCRIPT } = require('./session_scripts');
 
 // ioredis `multi().exec()` resolve com um array de tuplas [err, result] e NAO
 // rejeita quando um comando individual falha — so rejeita em abort de transacao.
@@ -66,7 +66,16 @@ function createSessionManager(redis, config, log, hooks = {}) {
     const s = await redis.hgetall(SESSION_KEY);
     if (!s || !s.id) return null;
     if (s.status === 'active' && !(at - Number(s.startedAt) < RACE_LOCK_MS)) {
-      if (await closeSession(s.id, 'expired', at)) log('info', 'session_expired', { sessionId: s.id, startedAt: Number(s.startedAt) });
+      if (await closeSession(s.id, 'expired', at)) {
+        log('info', 'session_expired', { sessionId: s.id, startedAt: Number(s.startedAt) });
+        // Revisao do PR #32: lado de gente que nao chegou em 10 min perdeu a corrida. Avisa
+        // como descarte (log + /health + painel), em vez de sumir so com o log acima.
+        for (const n of [1, 2]) {
+          if (!['contact', 'missing'].includes(kindOf(s, n)) || s[`player${n}Dispatched`] === 'true') continue;
+          log('warn', 'session_expired_unfinished', { playerId: n, sessionId: s.id, kind: kindOf(s, n) });
+          if (typeof hooks.onDiscarded === 'function') hooks.onDiscarded({ playerId: n, sessionId: s.id, reason: 'session_expired' });
+        }
+      }
       return redis.hgetall(SESSION_KEY);
     }
     return s;
@@ -252,6 +261,9 @@ function createSessionManager(redis, config, log, hooks = {}) {
     }
 
     const kind = kindOf(current, playerId);
+    const listKey = packetsKey(session.id, playerId);
+    // Spec B8a: lado que nao vai para a nuvem nao deixa os pacotes no Redis ate a proxima largada.
+    if (kind !== 'contact') await redis.del(listKey);
     if (kind === 'missing') {
       // NEU-73: largada sem registro — a forma mais provavel de perder a corrida de uma pessoa.
       log('warn', 'has_finished_discarded_bot', {
@@ -267,8 +279,6 @@ function createSessionManager(redis, config, log, hooks = {}) {
       log('info', 'has_finished_not_saved', { playerId, sessionId: session.id, kind });
       return;
     }
-
-    const listKey = packetsKey(session.id, playerId);
 
     try {
       const rawPackets = await redis.lrange(listKey, 0, -1);
@@ -321,11 +331,14 @@ function createSessionManager(redis, config, log, hooks = {}) {
         },
       };
 
-      // Persiste o resultado e remove a lista de pacotes ja consolidada (anti-leak).
-      // execMulti garante que uma falha por-comando nao passe como sucesso.
-      await execMulti(
-        redis.multi().rpush('dispatch:queue', JSON.stringify(record)).del(listKey),
-      );
+      // Persiste o resultado e remove a lista de pacotes ja consolidada (anti-leak), so se a
+      // sessao ainda estiver aberta: um Parar no meio ganha (ENQUEUE_SCRIPT, atomico).
+      const enqueued = await redis.eval(ENQUEUE_SCRIPT, 3, SESSION_KEY, 'dispatch:queue', listKey, session.id, JSON.stringify(record));
+      if (Number(enqueued) !== 1) {
+        const closed = await redis.hgetall(SESSION_KEY);
+        log('warn', 'has_finished_ignored_closed_session', { playerId, sessionId: session.id, status: closed && closed.status });
+        return;
+      }
 
       log('info', 'race_result_persisted', {
         jobId: record.jobId,

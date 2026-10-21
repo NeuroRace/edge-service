@@ -169,7 +169,9 @@
     if (health && Number(health.discardedRaces) > Number(prevDiscarded || 0)) {
       const text = health.lastDiscardReason === 'no_eeg_signal'
         ? 'Uma corrida foi descartada porque o leitor ficou sem sinal de EEG (fone desconectado ou sem contato). Ela não foi para a nuvem — peça para a pessoa correr de novo.'
-        : 'Uma corrida foi descartada por falta de e-mail registrado. Ela não foi para a nuvem.';
+        : health.lastDiscardReason === 'session_expired'
+          ? 'Uma corrida passou de 10 min sem terminar e foi descartada. Ela não foi para a nuvem — peça para a pessoa correr de novo.'
+          : 'Uma corrida foi descartada por falta de e-mail registrado. Ela não foi para a nuvem.';
       out.push({ level: 'error', code: 'race_discarded', text });
     }
     if (!disp.enabled) {
