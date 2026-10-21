@@ -471,7 +471,7 @@
   const STOP_TAIL = {
     waiting: 'Parando o jogo…',
     confirmed: 'O jogo voltou para a espera.',
-    timeout: 'O jogo não confirmou que parou: confira a tela do jogo e mande parar de novo, ou largue mesmo assim.',
+    timeout: 'O jogo não confirmou que parou: confira a tela do jogo e mande parar de novo. Largue mesmo assim só com o jogo no menu.',
   };
   function stopFeedback({ saved, told, game }) {
     const tail = !told ? 'Pare também no jogo.' : (STOP_TAIL[game] || 'O jogo volta para a espera.');

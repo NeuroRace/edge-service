@@ -422,8 +422,27 @@ function createSessionManager(redis, config, log, hooks = {}) {
   // o Largar sem precisar do Parar. Quem ja chegou fica na fila; quem nao chegou perde a
   // corrida, como no Parar. Um raceStopped atrasado da corrida anterior chegaria logo depois
   // da largada desta: antes do piso, ele e ignorado.
+  // NEU-181 (revisao do #45): o raceStopped tambem nao diz de qual corrida e. O jogo manda um
+  // a cada stopRace que recebe (NEU-146). Se ele travou, o operador larga mesmo assim, e o
+  // raceStopped velho chegaria depois do piso fechando a corrida seguinte. Cada stopRace que o
+  // painel manda deixa uma marca; o raceStopped seguinte e a confirmacao dela: so consome a
+  // marca e nao fecha nada. Marca com mais de 10 min (RACE_LOCK_MS) e esquecida.
+  const STOP_PENDING_KEY = 'game:stopPending';
+  async function onStopCommand() {
+    await redis.hincrby(STOP_PENDING_KEY, 'count', 1);
+    await redis.hset(STOP_PENDING_KEY, 'at', String(now()));
+  }
+
   async function onRaceStopped() {
     const at = now();
+    const mark = (await redis.hgetall(STOP_PENDING_KEY)) || {};
+    const pendingStops = Number(mark.count) || 0;
+    if (pendingStops > 0 && at - Number(mark.at) < RACE_LOCK_MS) {
+      await redis.hincrby(STOP_PENDING_KEY, 'count', -1);
+      log('info', 'race_stopped_confirmed', { pendingStops: pendingStops - 1 });
+      return;
+    }
+    if (pendingStops > 0) await redis.del(STOP_PENDING_KEY);
     const s = await readSession(at);
     if (!s || s.status !== 'active') return;
     const afterMs = at - Number(s.startedAt);
@@ -525,6 +544,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
     onEsense: serial(onEsense),
     onHasFinished: serial(onHasFinished),
     onRaceStopped: serial(onRaceStopped),
+    onStopCommand: serial(onStopCommand),
     // Parar e Vincular vem do painel (HTTP) e ja sao atomicos contra o claim (Lua): ficam fora
     // da fila, de proposito. Um Parar no meio do hasFinished continua ganhando (revisao do #32).
     stopRace, linkPlayer,

@@ -129,6 +129,11 @@ function registerSocketHandlers(io, log, runtimeState, session, presence = null,
         runtimeState.markEventValidated();
         if (presence) presence.onEvent(socket.id, event, payload, now());
         log('info', 'event_received', { event, socketId: socket.id, payload, enforced: false });
+        // NEU-181: a marca entra na fila da sessao antes de o comando sair, entao o raceStopped
+        // que o jogo devolver sempre chega depois dela.
+        if (event === 'stopRace' && session && typeof session.onStopCommand === 'function') {
+          session.onStopCommand().catch((err) => log('error', 'session_stop_command_error', { error: err?.message ?? String(err) }));
+        }
         socket.broadcast.emit(event, payload);
       });
     }

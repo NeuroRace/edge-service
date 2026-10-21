@@ -27,6 +27,6 @@ test('stopFeedback: texto do Parar em cada fase da confirmacao do jogo', () => {
   assert.equal(S.stopFeedback({ saved: [], told: true, game: 'waiting' }), 'Corrida parada, nada foi gravado. Parando o jogo…');
   assert.equal(S.stopFeedback({ saved: [], told: true, game: 'confirmed' }), 'Corrida parada, nada foi gravado. O jogo voltou para a espera.');
   assert.equal(S.stopFeedback({ saved: [1], told: true, game: 'timeout' }),
-    'Corrida parada. O tempo do P1 já tinha sido gravado e vai para o site; o do P2 não foi gravado. O jogo não confirmou que parou: confira a tela do jogo e mande parar de novo, ou largue mesmo assim.');
+    'Corrida parada. O tempo do P1 já tinha sido gravado e vai para o site; o do P2 não foi gravado. O jogo não confirmou que parou: confira a tela do jogo e mande parar de novo. Largue mesmo assim só com o jogo no menu.');
   assert.equal(S.stopFeedback({ saved: [], told: false, game: 'waiting' }), 'Corrida parada, nada foi gravado. Pare também no jogo.', 'sem socket nao ha o que esperar');
 });
