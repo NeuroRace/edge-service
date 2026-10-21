@@ -1,0 +1,3 @@
+# NEU-144: o cmd le .bat com CRLF; com LF o goto pode falhar.
+*.bat text eol=crlf
+*.cmd text eol=crlf
