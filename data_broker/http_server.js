@@ -95,10 +95,10 @@ function handleSetup(req, res, log, apply) {
   });
   req.on('end', async () => {
     if (aborted) return;
-    let data;
-    try { data = JSON.parse(body); } catch { sendJson(res, 400, { error: 'invalid_json' }); return; }
+    const data = parseJsonObject(body);
+    if (!data) { sendJson(res, 400, { error: 'invalid_json' }); return; }
     try {
-      const result = await apply(data || {});
+      const result = await apply(data);
       sendJson(res, result.ok ? 200 : SETUP_STATUS[result.error] || 500, result);
     } catch (err) {
       log('error', 'api_player_setup_error', { error: err?.message ?? String(err) });

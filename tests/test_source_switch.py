@@ -92,6 +92,21 @@ class SourceSwitchTests(unittest.TestCase):
         sw.take_switched()
         self.assertFalse(sw.wait(0.01))
 
+    def test_wake_is_set_inside_the_lock(self):
+        # Fora da trava, um take_switched entre marcar a troca e o set deixava o evento
+        # ligado sem troca pendente, e o backoff seguinte do EEG sumia (revisao do PR #31).
+        sw = SourceSwitch()
+        seen = []
+
+        class Probe(threading.Event):
+            def set(self):
+                seen.append(sw._lock.locked())
+                super().set()
+
+        sw._wake = Probe()
+        sw.request("bot")
+        self.assertEqual(seen, [True])
+
     def test_config_for_labels_bot_and_keeps_env_label_for_neurosky(self):
         cfg, sw = make_config(source="real"), SourceSwitch()
         self.assertEqual(sw.config_for(cfg).source, "real")

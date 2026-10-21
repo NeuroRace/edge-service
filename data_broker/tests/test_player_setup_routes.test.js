@@ -66,6 +66,18 @@ test('sem JSON = 415 (CSRF por formulario), JSON quebrado = 400, corpo grande = 
   });
 });
 
+test('corpo JSON que nao e objeto (null, lista, numero) = 400, sem chamar o setup (NEU-154)', async () => {
+  const setup = stub({ ok: true, setup: {} });
+  await withServer(setup, async (port) => {
+    for (const body of ['null', '[1,"bot"]', '7', '"bot"']) {
+      const res = await request(port, { path: '/api/players/source', body });
+      assert.equal(res.status, 400, body);
+      assert.deepEqual(JSON.parse(res.body), { error: 'invalid_json' });
+    }
+    assert.deepEqual(setup.calls, []);
+  });
+});
+
 test('sem playerSetup as rotas nao existem', async () => {
   await withServer(null, async (port) => {
     assert.equal((await request(port, { path: '/api/players/source', body: '{}' })).status, 404);

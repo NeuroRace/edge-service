@@ -45,8 +45,10 @@ class SourceSwitch:
                 return False
             self._mode = mode
             self._switched = True
+            # Dentro da trava: fora dela, um take_switched entre as duas linhas limpava o
+            # evento antes do set, e o backoff seguinte acordava na hora sem troca nenhuma.
+            self._wake.set()
             active = self._active
-        self._wake.set()
         if active is not None:
             self._shutdown(active)
         return True
