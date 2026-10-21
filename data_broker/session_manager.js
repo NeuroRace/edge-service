@@ -57,6 +57,19 @@ function createSessionManager(redis, config, log, hooks = {}) {
   // eSense de sessao fechada: um log por sessao, nao um por pacote (1/s por jogador).
   const loggedClosed = new Set();
 
+  // Revisao do #41 (NEU-179): os eventos chegam do socket sem await entre si. Sem fila, o
+  // raceStopped (o ultimo chega e o jogo volta para a espera na hora) fechava a sessao entre
+  // o claim e o ENQUEUE do hasFinished: a chegada sumia em silencio, ou virava descarte falso
+  // de "sem EEG" (o CLOSE apagava os pacotes). Um evento do socket por vez, na ordem.
+  let tail = Promise.resolve();
+  function serial(fn) {
+    return (...args) => {
+      const run = tail.then(() => fn(...args));
+      tail = run.catch(() => {});
+      return run;
+    };
+  }
+
   // NEU-140: fecha a sessao `id` de forma atomica (so se ainda for a atual e estiver aberta).
   async function closeSession(id, status, at) {
     const closed = await redis.eval(CLOSE_SCRIPT, 3, SESSION_KEY, packetsKey(id, 1), packetsKey(id, 2), id, status, String(at));
@@ -256,7 +269,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
     if (minRaceMs > 0 && elapsedMs < minRaceMs) {
       log('warn', 'has_finished_too_soon', { playerId, sessionId: session.id, elapsedMs, minRaceMs });
       if (typeof hooks.onFinishIgnored === 'function') {
-        hooks.onFinishIgnored({ playerId, sessionId: session.id, reason: 'too_soon' });
+        hooks.onFinishIgnored({ playerId, sessionId: session.id, reason: 'too_soon', elapsedMs, minRaceMs });
       }
       return;
     }
@@ -323,6 +336,13 @@ function createSessionManager(redis, config, log, hooks = {}) {
       // para a fila, de forma barulhenta (log + /health + tela). O claim fica gravado:
       // um hasFinished duplicado nao dispara um segundo descarte.
       if (packets.length < minEegPackets) {
+        // Revisao do #41: um Parar entre a releitura e o lrange apaga os pacotes (CLOSE). Sessao
+        // fechada no meio nao e "sem EEG": o Parar ganha e nao ha banner falso de fone.
+        const still = await redis.hgetall(SESSION_KEY);
+        if (!still || still.id !== session.id || still.status !== 'active') {
+          log('warn', 'has_finished_ignored_closed_session', { playerId, sessionId: session.id, status: still && still.status });
+          return;
+        }
         await redis.del(listKey);
         log('warn', 'has_finished_discarded_no_eeg', {
           playerId, sessionId: session.id, reason: 'no_eeg_signal', packets: packets.length, minPackets: minEegPackets,
@@ -491,7 +511,17 @@ function createSessionManager(redis, config, log, hooks = {}) {
     log('info', 'recent_players_cleared', {});
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, onRaceStopped, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress, stopRace, linkPlayer };
+  return {
+    registerPlayers,
+    onRaceStarted: serial(onRaceStarted),
+    onEsense: serial(onEsense),
+    onHasFinished: serial(onHasFinished),
+    onRaceStopped: serial(onRaceStopped),
+    // Parar e Vincular vem do painel (HTTP) e ja sao atomicos contra o claim (Lua): ficam fora
+    // da fila, de proposito. Um Parar no meio do hasFinished continua ganhando (revisao do #32).
+    stopRace, linkPlayer,
+    getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress,
+  };
 }
 
 module.exports = { createSessionManager, execMulti, RECENT_PLAYERS_MAX };

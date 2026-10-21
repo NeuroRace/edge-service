@@ -230,6 +230,14 @@
         out.push({ level: 'error', code: 'race_missing_contact', text: `${who} ${verb} sem cadastro. Digite o contato e clique em Vincular antes de terminar.` });
       }
     }
+    // Revisao do #41 (NEU-179): chegada ignorada por vir antes do piso. Avisa so enquanto a
+    // corrida em que ela caiu estiver aberta: numa corrida curta de verdade, as duas chegadas
+    // sao ignoradas e so o Parar libera o painel.
+    const ign = health && health.lastIgnoredFinish;
+    if (ign && session && session.status === 'active' && ign.sessionId === session.sessionId) {
+      const secs = (v) => String(Math.round(Number(v) / 100) / 10).replace('.', ',');
+      out.push({ level: 'warn', code: 'finish_ignored', text: `Chegada do P${ign.playerId} ignorada: veio ${secs(ign.elapsedMs)} s depois da largada (o mínimo é ${secs(ign.minRaceMs)} s), deve ser da corrida anterior. A corrida segue. Se ela acabou mesmo, clique em Parar corrida.` });
+    }
     if (health && Number(health.discardedRaces) > Number(prevDiscarded || 0)) {
       const text = health.lastDiscardReason === 'no_eeg_signal'
         ? 'Uma corrida foi descartada porque o leitor ficou sem sinal de EEG (fone desconectado ou sem contato). Ela não foi para a nuvem — peça para a pessoa correr de novo.'

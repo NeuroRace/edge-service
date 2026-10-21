@@ -11,6 +11,8 @@ function createRuntimeState(startedAt = Date.now(), now = Date.now) {
   // a corrida da pessoa segue valendo.
   let ignoredFinishes = 0;
   let lastIgnoredFinishAt = null;
+  // { sessionId, playerId, elapsedMs, minRaceMs }: o painel avisa enquanto a corrida dele durar.
+  let lastIgnoredFinish = null;
   // D11 / NEU-69: o dispatcher informa seu estado via funcao (nunca muda `status`).
   let dispatcherState = () => ({ enabled: false });
 
@@ -32,9 +34,13 @@ function createRuntimeState(startedAt = Date.now(), now = Date.now) {
       lastDiscardedAt = now();
       lastDiscardReason = reason;
     },
-    markFinishIgnored() {
+    markFinishIgnored(info = null) {
       ignoredFinishes += 1;
       lastIgnoredFinishAt = now();
+      lastIgnoredFinish = info && {
+        sessionId: info.sessionId ?? null, playerId: info.playerId ?? null,
+        elapsedMs: info.elapsedMs ?? null, minRaceMs: info.minRaceMs ?? null,
+      };
     },
     setDispatcherState(fn) {
       dispatcherState = typeof fn === 'function' ? fn : () => fn;
@@ -54,6 +60,7 @@ function createRuntimeState(startedAt = Date.now(), now = Date.now) {
         lastDiscardReason,
         ignoredFinishes,
         lastIgnoredFinishAt,
+        lastIgnoredFinish,
         dispatcher,
       };
     },

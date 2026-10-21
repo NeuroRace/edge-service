@@ -74,6 +74,8 @@ O broker manda, so para a peca daquele jogador:
 - `GET /api/session/current` ganha `player1Kind`/`player2Kind` (e `pending.playerNKind`).
 - **Limitacao:** o jogo nao manda id de corrida. Um `hasFinished` atrasado que chega **depois da largada seguinte** cai na corrida nova. A solucao (id no `raceStarted`/`hasFinished`) esta na NEU-146.
 - **Defesa barata (NEU-179):** `hasFinished` que chega antes de `MIN_RACE_SECONDS` (padrao 15 s, contado da largada) e ignorado **sem** reivindicar o lado: log `has_finished_too_soon`, contador `ignoredFinishes`/`lastIgnoredFinishAt` no `/health`, e a chegada de verdade daquele lado ainda conta. Um `raceStopped` antes do piso tambem e ignorado (`race_stopped_too_soon`), para o aviso atrasado da corrida anterior nao derrubar a que acabou de largar. Chegada atrasada que cai **depois** do piso continua passando. `MIN_RACE_SECONDS=0` desliga.
+  - Enquanto a corrida em que a chegada foi ignorada estiver aberta, o painel avisa (`finish_ignored`, a partir de `lastIgnoredFinish` no `/health`). Numa corrida curta de verdade (menos de 15 s), as duas chegadas sao ignoradas e quem libera e o **Parar corrida**.
+  - Os eventos do socket que mexem na sessao (`raceStarted`, `eSense`, `hasFinished`, `raceStopped`) sao processados **um por vez, na ordem** (fila no `session_manager.js`). Sem isso, o `raceStopped` que vem logo depois do ultimo `hasFinished` fechava a sessao no meio da chegada (revisao do #41). Parar e Vincular (HTTP) ficam fora da fila: ja sao atomicos no Redis, e um Parar no meio da chegada ganha, sem virar descarte de "sem EEG".
 
 ## Event: `eSense`
 

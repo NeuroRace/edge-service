@@ -36,7 +36,7 @@ test('test_LateFinish_finish_before_floor_is_ignored_and_side_still_counts', asy
   assert.ok(warn, 'log warn has_finished_too_soon');
   assert.equal(warn.playerId, 2); assert.equal(warn.sessionId, s.id);
   assert.equal(warn.elapsedMs, 450); assert.equal(warn.minRaceMs, 15000);
-  assert.deepEqual(ignored, [{ playerId: 2, sessionId: s.id, reason: 'too_soon' }]);
+  assert.deepEqual(ignored, [{ playerId: 2, sessionId: s.id, reason: 'too_soon', elapsedMs: 450, minRaceMs: 15000 }]);
 
   clock.t += 40_000; // a chegada de verdade dela, 40 s depois
   await packet(session, 2);
@@ -144,4 +144,21 @@ test('test_LateFinish_config_and_health_counter', () => {
   rs.markFinishIgnored();
   assert.equal(rs.snapshot().ignoredFinishes, 1);
   assert.equal(rs.snapshot().lastIgnoredFinishAt, 5);
+});
+
+test('test_LateFinish_panel_warns_while_that_race_is_open', () => {
+  const S = require('../public/ops_state');
+  const rs = createRuntimeState(0, () => 5);
+  rs.markFinishIgnored({ sessionId: 'B', playerId: 2, elapsedMs: 450, minRaceMs: 15000, reason: 'too_soon' });
+  const health = { ...rs.snapshot(), dispatcher: { enabled: true, counts: {} } };
+  assert.deepEqual(health.lastIgnoredFinish, { sessionId: 'B', playerId: 2, elapsedMs: 450, minRaceMs: 15000 });
+  const base = { signals: {}, now: 0, queueSince: null, prevDiscarded: 0, health };
+  const warn = S.alerts({ ...base, session: { status: 'active', sessionId: 'B' } }).find((a) => a.code === 'finish_ignored');
+  assert.ok(warn, 'avisa na corrida em que a chegada foi ignorada');
+  assert.equal(warn.level, 'warn');
+  assert.match(warn.text, /P2 ignorada: veio 0,5 s depois da largada \(o mínimo é 15 s\)/);
+  assert.match(warn.text, /Parar corrida/);
+  for (const session of [{ status: 'active', sessionId: 'C' }, { status: 'stopped', sessionId: 'B' }, { status: 'none' }]) {
+    assert.ok(!S.alerts({ ...base, session }).some((a) => a.code === 'finish_ignored'), `sem aviso em ${JSON.stringify(session)}`);
+  }
 });
