@@ -125,3 +125,28 @@ test('pslLevel: 0 verde, 1..199 amarelo, 200 vermelho, sem valor = none', () => 
   assert.equal(S.pslLevel(undefined), 'none');
   assert.equal(S.STALE_MS, 10_000);
 });
+
+// Revisao pos-merge do #26 (15/10): PC coletor congelado ou cabo puxado sem fechar a conexao.
+// As duas pecas seguem "conectadas" ate o ping do Socket.IO cair (~44 s), mas nenhuma responde.
+test('CA: coletor congelado (as duas pecas sem noticia) -> Coletor vermelho com uma linha so', () => {
+  const st = allOk();
+  st.pieces['acquisition-p2'] = live({ lastEventAt: T - 15_000 });
+  st.pieces['gesture-p2'] = live({ lastEventAt: T - 15_000 });
+  const r = strip(st);
+  assert.equal(r.groups.coletor, 'down');
+  assert.deepEqual(r.lines, ['Coletor sem resposta · confira se o PC coletor está ligado e o cabo plugado']);
+});
+
+test('uma peca sem noticia e a outra fora tambem e Coletor vermelho', () => {
+  const st = allOk();
+  st.pieces['acquisition-p2'] = off();
+  st.pieces['gesture-p2'] = live({ lastEventAt: T - 15_000 });
+  assert.equal(strip(st).groups.coletor, 'down');
+});
+
+test('ThinkGear fechado prova que o PC responde: Coletor continua amarelo', () => {
+  const st = allOk();
+  st.pieces['acquisition-p2'] = live({ eeg: 'connecting' });
+  st.pieces['gesture-p2'] = live({ lastEventAt: T - 15_000 });
+  assert.equal(strip(st).groups.coletor, 'warn');
+});

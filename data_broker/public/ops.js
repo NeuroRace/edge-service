@@ -251,10 +251,10 @@
       $(`[data-state-chip="${slot}"]`).textContent = STATE_LABEL[state];
       const idx = state === 'sent' || state === 'rejected' ? 2 : STEP_ORDER.indexOf(state);
       card.querySelectorAll('.steps li').forEach((li, i) => { li.dataset.done = String(i < idx); li.dataset.current = String(i === idx); });
-      // Durante a corrida (ate o envio) o campo mostra o e-mail em uso e fica travado;
-      // depois libera para a proxima dupla.
+      // Durante a corrida o campo mostra o e-mail em uso e fica travado; "Terminou" libera
+      // para a proxima dupla, com ou sem nuvem (NEU-141).
       const input = $(`#email${slot}`);
-      const locked = (state === 'racing' || state === 'finished') && !st.session.pending;
+      const locked = S.contactLocked({ state, hasPending: !!st.session.pending });
       if (locked) { input.value = st.session[`player${slot}Email`] || ''; input.readOnly = true; }
       else if (input.readOnly) { input.readOnly = false; input.value = ''; }
       else input.readOnly = false;
@@ -410,7 +410,7 @@
   }
   // NEU-141: ultimos jogadores. Contato completo (o painel so abre no PC central, spec D5).
   // Durante a corrida o campo do jogador fica travado (mostra quem esta na pista); os
-  // botoes P1/P2 so voltam quando a corrida terminar ("Proximo P1/P2" chega com a NEU-140).
+  // botoes P1/P2 voltam em "Terminou", com ou sem nuvem.
   let recentKey = null;
   function renderRecent() {
     const tbody = $('[data-recent-list]');

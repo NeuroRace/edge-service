@@ -107,3 +107,15 @@ test('filterRecentPlayers: busca por parte do contato, sem caixa e sem espacos',
   assert.deepEqual(S.filterRecentPlayers(list, 'zzz'), []);
   assert.deepEqual(S.filterRecentPlayers(null, 'a'), []);
 });
+
+// Revisao pos-merge do #28 (15/10): sem nuvem, "Terminou" nunca vira "enviada" e o campo
+// ficava travado com a dupla anterior. Offline first: so trava enquanto a pessoa corre.
+test('campo do jogador trava so durante a corrida, com ou sem nuvem', () => {
+  const S = require('../public/ops_state');
+  assert.equal(S.contactLocked({ state: 'racing', hasPending: false }), true);
+  for (const state of ['finished', 'sent', 'rejected', 'lost', 'waiting', 'registered', 'missing', 'bot', 'nosignup']) {
+    assert.equal(S.contactLocked({ state, hasPending: false }), false, state);
+  }
+  // Proxima dupla ja registrada durante a corrida: o campo mostra a proxima, nao trava.
+  assert.equal(S.contactLocked({ state: 'racing', hasPending: true }), false);
+});
