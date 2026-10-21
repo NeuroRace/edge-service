@@ -23,7 +23,7 @@ for name in ("simulator-a","simulator-b","broker"):
     if name in s: need(s[name].get("restart") == "unless-stopped", f"{name}: restart={s[name].get('restart')} (esperado unless-stopped)")
 if "broker" in s:
     env = s["broker"].get("environment", {})
-    for k, d in (("DISPATCH_HTTP_TIMEOUT_MS","15000"),("DISPATCH_MAX_ATTEMPTS","8"),("DISPATCH_BACKOFF_MAX_MS","10000")):
+    for k, d in (("DISPATCH_HTTP_TIMEOUT_MS","15000"),("DISPATCH_MAX_ATTEMPTS","120"),("DISPATCH_BACKOFF_MAX_MS","10000")):
         need(str(env.get(k)) == d, f"broker: {k}={env.get(k)} (esperado default {d} sem env)")
 if fails:
     print("FAIL validate-compose-banca:"); [print("  -", f) for f in fails]; sys.exit(1)
