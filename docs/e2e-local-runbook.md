@@ -47,6 +47,10 @@ REDIS_URL=redis://127.0.0.1:6379 BROKER_PORT=34100 node index.js &
 node e2e/race-producer.js --broker http://127.0.0.1:34100 \
      --emails jogador1@ex.com,jogador2@ex.com --points 5
 
+#    NEU-160: contato pode ser celular. Casos do "Pronto quando":
+#      --contacts "11 98765-4321,b@x.com"     -> 2 registros (um com phone, outro com email)
+#      --contacts "11 98765-4321" --p2-bot    -> 1 registro (P2 em Bot no painel; volta no fim)
+
 # 4. Conferir a fila (esperado: 2 — um registro por jogador)
 docker exec neurorace-e2e-redis redis-cli LLEN dispatch:queue
 docker exec neurorace-e2e-redis redis-cli LINDEX dispatch:queue 0   # inspeciona o registro

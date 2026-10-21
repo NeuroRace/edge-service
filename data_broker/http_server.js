@@ -75,7 +75,7 @@ function handleRequeue(req, res, dispatchAdmin, log) {
 
 const SETUP_STATUS = { invalid_player: 400, invalid_source: 400, invalid_camera: 400, race_in_progress: 409 };
 
-const SESSION_STATUS = { invalid_player: 400, invalid_email: 400, no_active_session: 409, not_missing: 409, already_finished: 409, session_changed: 409 };
+const SESSION_STATUS = { invalid_player: 400, invalid_email: 400, invalid_phone: 400, no_active_session: 409, not_missing: 409, already_finished: 409, session_changed: 409 };
 // `sessionId` (opcional): a corrida que o painel via. So texto conta.
 const seenSession = (data) => (typeof data.sessionId === 'string' && data.sessionId ? data.sessionId : undefined);
 
@@ -288,7 +288,7 @@ function createHttpServer(getHealthSnapshot, session, log = () => {}, dispatchAd
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(result));
         } catch (err) {
-          if (err && (err.code === 'invalid_email' || err.code === 'missing_contact')) {
+          if (err && (err.code === 'invalid_email' || err.code === 'invalid_phone' || err.code === 'missing_contact')) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: err.code, field: err.field }));
             return;

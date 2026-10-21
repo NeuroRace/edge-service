@@ -114,8 +114,17 @@
     el.textContent = start.map((b) => b.text).join(' · '); el.hidden = start.length === 0;
     return list;
   }
+  // NEU-160: motivo do contato invalido embaixo do campo. Aparece ao sair do campo (nao a cada
+  // tecla, que acusaria "falta o DDD" no meio da digitacao) e some assim que fica valido.
+  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  function showFieldError(slot, text) {
+    const input = $(`#email${slot}`); const err = $(`[data-error="${slot}"]`);
+    if (text) { input.setAttribute('aria-invalid', 'true'); err.textContent = text; err.hidden = false; }
+    else { input.removeAttribute('aria-invalid'); err.hidden = true; err.textContent = ''; }
+  }
   for (const slot of [1, 2]) {
-    $(`#email${slot}`).addEventListener('input', renderBlockers);
+    $(`#email${slot}`).addEventListener('input', () => { if (!S.parseContact($(`#email${slot}`).value).error) showFieldError(slot, ''); renderBlockers(); });
+    $(`#email${slot}`).addEventListener('change', () => { const c = S.parseContact($(`#email${slot}`).value); showFieldError(slot, c.error ? `${cap(c.error.text)}.` : ''); });
     noSignupBox(slot).addEventListener('change', () => { const s = setupOf(slot); applyContactField(slot, s ? s.source : null); renderBlockers(); });
   }
 
@@ -123,13 +132,13 @@
   // Devolve true se registrou. Usado pelo Registrar e pelo Largar (NEU-140).
   async function registerPlayers() {
     const btn = $('#register-btn');
-    const emails = { 1: S.normalizeEmail($('#email1').value), 2: S.normalizeEmail($('#email2').value) };
+    const emails = {};
     let bad = false;
     for (const slot of [1, 2]) {
-      const input = $(`#email${slot}`); const err = $(`[data-error="${slot}"]`);
-      input.value = emails[slot];
-      if (!S.validateEmail(emails[slot])) { bad = true; input.setAttribute('aria-invalid', 'true'); err.textContent = 'E-mail inválido.'; err.hidden = false; }
-      else { input.removeAttribute('aria-invalid'); err.hidden = true; err.textContent = ''; }
+      const c = S.parseContact($(`#email${slot}`).value);
+      emails[slot] = c.value;
+      if (c.error) { bad = true; showFieldError(slot, `${cap(c.error.text)}.`); }
+      else { $(`#email${slot}`).value = S.formatContact(c.value); showFieldError(slot, ''); }
     }
     if (bad) return false;
     btn.disabled = true;
@@ -137,9 +146,9 @@
     try {
       const res = await fetch('/api/players', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player1Email: emails[1], player2Email: emails[2], player1NoSignup: noSignupBox(1).checked, player2NoSignup: noSignupBox(2).checked }) });
       const body = await res.json().catch(() => ({}));
-      if (res.status === 400 && body.error === 'invalid_email') {
+      if (res.status === 400 && (body.error === 'invalid_email' || body.error === 'invalid_phone')) {
         const slot = body.field === 'player2Email' ? 2 : 1;
-        $(`#email${slot}`).setAttribute('aria-invalid', 'true'); const err = $(`[data-error="${slot}"]`); err.textContent = 'O broker recusou este e-mail.'; err.hidden = false;
+        showFieldError(slot, body.error === 'invalid_phone' ? 'O broker recusou este celular.' : 'O broker recusou este e-mail.');
       } else if (res.status === 400 && body.error === 'missing_contact') {
         const slot = body.field === 'player2Email' ? 2 : 1;
         const err = $(`[data-error="${slot}"]`); err.textContent = 'Digite o contato ou marque Sem cadastro.'; err.hidden = false;
@@ -183,14 +192,16 @@
   // ---------- NEU-140: vincular a corrida largada sem registro ----------
   document.querySelectorAll('[data-link-player]').forEach((btn) => btn.addEventListener('click', async () => {
     const slot = Number(btn.dataset.linkPlayer); const input = $(`#email${slot}`); const err = $(`[data-error="${slot}"]`);
-    const email = S.normalizeEmail(input.value);
-    if (!email || !S.validateEmail(email)) { input.setAttribute('aria-invalid', 'true'); err.textContent = 'Digite um e-mail válido para vincular.'; err.hidden = false; return; }
+    const c = S.parseContact(input.value);
+    if (c.type === 'empty') { showFieldError(slot, 'Digite o e-mail ou o celular para vincular.'); return; }
+    if (c.error) { showFieldError(slot, `${cap(c.error.text)}.`); return; }
+    const email = c.value;
     btn.disabled = true;
     try {
       const res = await fetch('/api/session/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player: slot, email, sessionId: st.session.sessionId }) });
       const body = await res.json().catch(() => ({}));
-      const MSG = { session_changed: 'A corrida mudou. Confira o card e clique de novo.', already_finished: 'Essa corrida já terminou sem cadastro.', not_missing: 'Esse lado já tem cadastro.', no_active_session: 'Não há corrida em andamento.', invalid_email: 'O broker recusou este e-mail.' };
-      if (res.ok) { input.removeAttribute('aria-invalid'); err.hidden = true; err.textContent = ''; $('#register-hint').textContent = `Jogador ${slot} vinculado: ${email}.`; }
+      const MSG = { session_changed: 'A corrida mudou. Confira o card e clique de novo.', already_finished: 'Essa corrida já terminou sem cadastro.', not_missing: 'Esse lado já tem cadastro.', no_active_session: 'Não há corrida em andamento.', invalid_email: 'O broker recusou este e-mail.', invalid_phone: 'O broker recusou este celular.' };
+      if (res.ok) { input.removeAttribute('aria-invalid'); err.hidden = true; err.textContent = ''; $('#register-hint').textContent = `Jogador ${slot} vinculado: ${S.formatContact(email)}.`; }
       else { err.textContent = MSG[body.error] || `Falha ao vincular (${res.status}).`; err.hidden = false; }
     } catch (e) {
       err.textContent = 'Sem resposta do broker. Ele está de pé?'; err.hidden = false;
@@ -227,7 +238,7 @@
           : res.status === 409 ? 'Não há corrida em andamento.' : `Falha ao parar (${res.status}).`;
       await refresh();
       if (res.ok && !st.session.pending && !$('#email1').value && !$('#email2').value) {
-        for (const slot of [1, 2]) if (stopped[slot] && !$(`#email${slot}`).disabled) $(`#email${slot}`).value = stopped[slot];
+        for (const slot of [1, 2]) if (stopped[slot] && !$(`#email${slot}`).disabled) $(`#email${slot}`).value = S.formatContact(stopped[slot]);
         renderBlockers();
       }
     } catch (e) {
@@ -255,7 +266,7 @@
       // para a proxima dupla, com ou sem nuvem (NEU-141).
       const input = $(`#email${slot}`);
       const locked = S.contactLocked({ state, hasPending: !!st.session.pending });
-      if (locked) { input.value = st.session[`player${slot}Email`] || ''; input.readOnly = true; }
+      if (locked) { input.value = S.formatContact(st.session[`player${slot}Email`] || ''); input.readOnly = true; }
       else if (input.readOnly) { input.readOnly = false; input.value = ''; }
       else input.readOnly = false;
       $(`[data-link-player="${slot}"]`).hidden = state !== 'missing';
@@ -430,7 +441,7 @@
     }
     for (const p of rows) {
       const tr = document.createElement('tr');
-      const contact = document.createElement('td'); contact.className = 'mono'; contact.textContent = String(p.contact); tr.appendChild(contact);
+      const contact = document.createElement('td'); contact.className = 'mono'; contact.textContent = S.formatContact(p.contact); tr.appendChild(contact);
       const when = document.createElement('td'); when.className = 'mono';
       when.textContent = p.lastAt ? new Date(Number(p.lastAt)).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
       tr.appendChild(when);
@@ -438,7 +449,7 @@
       for (const slot of [1, 2]) {
         const btn = document.createElement('button');
         btn.type = 'button'; btn.className = 'btn-small'; btn.textContent = `P${slot}`;
-        btn.dataset.fillSlot = String(slot); btn.dataset.contact = String(p.contact);
+        btn.dataset.fillSlot = String(slot); btn.dataset.contact = S.formatContact(p.contact);
         btn.disabled = locked[slot];
         btn.title = locked[slot] ? 'Disponível quando a corrida terminar' : `Preencher o Jogador ${slot}`;
         actions.appendChild(btn);

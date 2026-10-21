@@ -29,7 +29,7 @@ implementação da Supabase Edge Function e do schema no `cloud-backend`.
 ```
 
 - **1 POST por jogador humano** ao receber `hasFinished`. Bots (`source: "bot"` ou
-  e-mail vazio) **não** são despachados.
+  contato vazio) **não** são despachados. Contato = e-mail **ou** celular (NEU-160).
 - A entrega é **assíncrona e com retry**: a corrida termina sem bloquear no envio;
   o dispatcher reentrega em background.
 
@@ -76,7 +76,9 @@ NEU-37: `race_id`, `player_email`, `telemetry_points`). O Edge é responsável p
   "idempotency_key": "5f8c...uuid-v4",     // string uuid-v4, obrigatório (= jobId)
   "race_id": "1a2b...uuid-v4",             // string uuid-v4 da sessão/corrida
   "player_slot": 1,                        // int, 1 | 2 (slot do jogador na corrida)
-  "player_email": "jogador1@exemplo.com",  // string não-vazia (humano)
+  "player_email": "jogador1@exemplo.com",  // string não-vazia (humano) — OU, no lugar dele:
+  // "player_phone": "+5511987654321",     // NEU-160/159: celular BR, +55 + DDD + 9 dígitos. Vem um dos dois
+  //   (os dois juntos: 422 player_email_and_phone_both; celular fora do formato: 422 player_phone_invalid)
   "player_uuid": null,                     // string uuid Supabase ou null (ainda não resolvido)
   "source": "real",                        // enum: "real" | "bot" (sempre "real" aqui)
   "started_at": 1735689600000,             // int, Unix epoch ms (UTC) — início da corrida
@@ -166,7 +168,8 @@ ainda não existe) precisa traduzir para o body canônico. Gap a fechar:
 | `idempotency_key` | `record.jobId` | renomear |
 | `race_id` | `record.sessionId` | renomear |
 | `player_slot` | `record.playerId` | renomear |
-| `player_email` | `record.payload.email` | renomear |
+| `player_email` | `record.payload.email` | renomear (só quando o contato é e-mail) |
+| `player_phone` | `record.payload.phone` | NEU-160: só quando o contato é celular; aí `player_email` não vai |
 | `player_uuid` | `record.payload.playerUuid` | renomear |
 | `source` | — (sempre humano) | adicionar (`"real"`) |
 | `started_at` | `record.payload.startedAt` | ok (já epoch ms) |
@@ -182,6 +185,11 @@ ainda não existe) precisa traduzir para o body canônico. Gap a fechar:
 
 > O record interno produzido hoje (lido em `session_manager.js`) é:
 > `{ jobId, playerId, sessionId, persistedAt, payload:{ email, playerUuid, startedAt, finishedAt, packets:[<eSense cru>] } }`.
+> NEU-160: com celular, `payload` traz `email: null` e `phone: "+5511987654321"`.
+>
+> **Celular antes da NEU-159 na nuvem:** a `ingest-race` de hoje exige `player_email` e
+> responde `422 player_email_required`. A corrida vai para o dead-letter com o registro
+> original ("Não subiram" no painel) e volta com **Reenviar** depois que a NEU-159 entrar.
 
 ---
 

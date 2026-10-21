@@ -24,6 +24,46 @@
     return EMAIL_RE.test(value);
   }
 
+  // NEU-160: e-mail ou celular num campo so. Tem `@` = e-mail; so numeros (com espaco,
+  // ponto, traco, parenteses ou +) = celular brasileiro com DDD, guardado como +55DDD9XXXXXXXX.
+  // Qualquer outra coisa segue como e-mail (e e recusada como hoje: invalid_email).
+  const PHONE_CHARS_RE = /^[\d\s().+-]+$/;
+  const DDDS = new Set('11 12 13 14 15 16 17 18 19 21 22 24 27 28 31 32 33 34 35 37 38 41 42 43 44 45 46 47 48 49 51 53 54 55 61 62 63 64 65 66 67 68 69 71 73 74 75 77 79 81 82 83 84 85 86 87 88 89 91 92 93 94 95 96 97 98 99'.split(' '));
+
+  function phoneError(foreign, digits) {
+    if (foreign) return 'só celular do Brasil (+55)';
+    if (digits.length === 8 || digits.length === 9) return 'falta o DDD (ex.: 11 98765-4321)';
+    if (digits.length === 10) return 'parece telefone fixo: celular tem o 9 depois do DDD';
+    if (digits.length !== 11) return 'celular tem 11 números com o DDD (ex.: 11 98765-4321)';
+    if (!DDDS.has(digits.slice(0, 2))) return `DDD ${digits.slice(0, 2)} não existe`;
+    if (digits[2] !== '9') return 'parece telefone fixo: celular tem o 9 depois do DDD';
+    return null;
+  }
+
+  // -> { type: 'empty'|'email'|'phone', value, error: null | { code, text } }
+  function parseContact(rawValue) {
+    const raw = String(rawValue == null ? '' : rawValue).trim();
+    if (raw === '') return { type: 'empty', value: '', error: null };
+    if (raw.includes('@') || !PHONE_CHARS_RE.test(raw) || !/\d/.test(raw)) {
+      const value = normalizeEmail(raw);
+      return { type: 'email', value, error: EMAIL_RE.test(value) ? null : { code: 'invalid_email', text: 'e-mail inválido' } };
+    }
+    // Com `+` o codigo do pais vem na frente e sai sempre ("+55 98765-4321" e falta de DDD,
+    // nao DDD 55). Sem `+`: 55 na frente de 11 digitos, ou o 0 da ligacao interurbana.
+    let digits = raw.replace(/\D/g, '');
+    const foreign = raw.startsWith('+') && !digits.startsWith('55');
+    if ((raw.startsWith('+') && !foreign) || (digits.length === 13 && digits.startsWith('55'))) digits = digits.slice(2);
+    else if (digits.length === 12 && digits.startsWith('0')) digits = digits.slice(1);
+    const text = phoneError(foreign, digits);
+    return text ? { type: 'phone', value: digits, error: { code: 'invalid_phone', text } } : { type: 'phone', value: `+55${digits}`, error: null };
+  }
+
+  // Celular guardado (+5511987654321) -> "(11) 98765-4321". E-mail volta igual.
+  function formatContact(value) {
+    const m = /^\+55(\d{2})(\d{5})(\d{4})$/.exec(String(value == null ? '' : value));
+    return m ? `(${m[1]}) ${m[2]}-${m[3]}` : String(value == null ? '' : value);
+  }
+
   // Estado do cartao do jogador, na ordem do trabalho do operador:
   // waiting -> registered|nosignup|bot -> racing -> finished -> sent|rejected
   // NEU-140: missing (o jogo largou sem registro; da para Vincular) -> lost (terminou sem).
@@ -74,7 +114,7 @@
   // NEU-140: campo de contato e caixa "Sem cadastro". Bot (NEU-86) e Sem cadastro desligam o campo;
   // numa corrida sem cadastro (missing) o campo e do Vincular, entao a caixa some e desmarca.
   function contactFieldState({ source, noSignup, state }) {
-    const PH = 'jogador@exemplo.com';
+    const PH = 'e-mail ou celular com DDD';
     if (source === 'bot') return { boxHidden: true, boxChecked: false, disabled: true, placeholder: 'Bot: não vai para a nuvem' };
     if (state === 'missing') return { boxHidden: true, boxChecked: false, disabled: false, placeholder: PH };
     if (noSignup) return { boxHidden: false, boxChecked: true, disabled: true, placeholder: 'Sem cadastro: não vai para a nuvem' };
@@ -88,9 +128,9 @@
       const s = slots[slot] || {};
       if (s.source === 'bot') continue;
       if (s.state === 'missing') { out.push({ slot, code: 'link_first', text: `P${slot}: corrida sem cadastro, use Vincular` }); continue; }
-      const email = normalizeEmail(s.email);
-      if (email && !validateEmail(email)) out.push({ slot, code: 'invalid_email', text: `P${slot}: e-mail inválido` });
-      else if (!email && s.noSignup !== true) out.push({ slot, code: 'missing_contact', text: `P${slot}: digite o contato ou marque Sem cadastro` });
+      const c = parseContact(s.email);
+      if (c.error) out.push({ slot, code: c.error.code, text: `P${slot}: ${c.error.text}` });
+      else if (c.type === 'empty' && s.noSignup !== true) out.push({ slot, code: 'missing_contact', text: `P${slot}: digite o contato ou marque Sem cadastro` });
     }
     return out;
   }
@@ -390,11 +430,18 @@
   }
 
   // NEU-141: busca na lista de ultimos jogadores (parte do contato, sem caixa).
+  // NEU-160: busca so de numeros compara so os digitos, para achar o celular digitado de
+  // qualquer jeito ("(11) 98765", "+55 11 9876").
   function filterRecentPlayers(list, query) {
     const q = String(query == null ? '' : query).trim().toLowerCase();
     const items = Array.isArray(list) ? list : [];
-    return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
+    if (!q) return items;
+    if (PHONE_CHARS_RE.test(q) && /\d/.test(q)) {
+      const d = q.replace(/\D/g, '');
+      return items.filter((p) => String(p.contact || '').replace(/\D/g, '').includes(d));
+    }
+    return items.filter((p) => String(p.contact || '').toLowerCase().includes(q));
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, contactLocked, startRacePayload, startBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
+  return { normalizeEmail, validateEmail, parseContact, formatContact,cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, contactLocked, startRacePayload, startBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
 }));
