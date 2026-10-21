@@ -46,8 +46,18 @@ test('test_OpsScreenServed_root_returns_html_with_strict_csp_and_three_blocks', 
       assert.match(res.body, new RegExp(`data-source-btn="${slot}" data-source="bot"`));
       assert.match(res.body, new RegExp(`data-camera="${slot}"`));
       assert.match(res.body, new RegExp(`data-setup-msg="${slot}"`));
+      // NEU-140: Sem cadastro e Vincular em cada card.
+      assert.match(res.body, new RegExp(`data-nosignup="${slot}"`));
+      assert.match(res.body, new RegExp(`data-link-player="${slot}"`));
+      // data-link ja e o indicador de conexao do bloco de sinal: nome repetido faria o sinal escrever no botao.
+      assert.equal((res.body.match(new RegExp(`data-link="${slot}"`, 'g')) || []).length, 1);
     }
     assert.match(res.body, /<option value="2">Câmera 3<\/option>/);
+    assert.match(res.body, /data-register-blockers/);
+    assert.match(res.body, /data-stop/);
+    // NEU-140: Largar (registra e manda o jogo largar) ao lado do Registrar.
+    assert.match(res.body, /data-start/);
+    assert.doesNotMatch(res.body, /deixe em branco para anônimo/);
   } finally { server.close(); }
 });
 
@@ -76,7 +86,7 @@ test('test_NoPathTraversal_only_allowlisted_assets_are_served', async () => {
 test('test_EmailNormalized_registerPlayers_lowercases_and_trims', async () => {
   const redis = new FakeRedis();
   const session = createSessionManager(redis, {}, () => {});
-  await session.registerPlayers('  Foo.Bar@Example.COM ', '');
+  await session.registerPlayers('  Foo.Bar@Example.COM ', '', { p2NoSignup: true });
   const pending = await redis.hgetall('pending:players');
   assert.equal(pending.player1Email, 'foo.bar@example.com');
   assert.equal(pending.player2Email, '');
@@ -85,7 +95,7 @@ test('test_EmailNormalized_registerPlayers_lowercases_and_trims', async () => {
 test('test_EmailValidated_registerPlayers_rejects_invalid_format', async () => {
   const session = createSessionManager(new FakeRedis(), {}, () => {});
   for (const bad of ['foo', 'a@b', 'a b@x.com', '@x.com', 'a@']) {
-    await assert.rejects(() => session.registerPlayers(bad, ''), (err) => err.code === 'invalid_email' && err.field === 'player1Email', bad);
+    await assert.rejects(() => session.registerPlayers(bad, '', { p2NoSignup: true }), (err) => err.code === 'invalid_email' && err.field === 'player1Email', bad);
   }
   await assert.rejects(() => session.registerPlayers('ok@x.com', 'nope'), (err) => err.field === 'player2Email');
 });
@@ -98,7 +108,7 @@ test('test_EmailValidated_http_returns_400_invalid_email', async () => {
     const res = await request(port, { method: 'POST', path: '/api/players', body: JSON.stringify({ player1Email: 'foo', player2Email: '' }) });
     assert.equal(res.status, 400);
     assert.deepEqual(JSON.parse(res.body), { error: 'invalid_email', field: 'player1Email' });
-    const ok = await request(port, { method: 'POST', path: '/api/players', body: JSON.stringify({ player1Email: ' A@x.com ', player2Email: '' }) });
+    const ok = await request(port, { method: 'POST', path: '/api/players', body: JSON.stringify({ player1Email: ' A@x.com ', player2Email: '', player2NoSignup: true }) });
     assert.equal(ok.status, 200); assert.equal(JSON.parse(ok.body).player1.email, 'a@x.com');
   } finally { server.close(); }
 });
@@ -106,7 +116,7 @@ test('test_EmailValidated_http_returns_400_invalid_email', async () => {
 test('test_SessionExposesBotFlags_current_session_has_isbot_and_startedAt', async () => {
   const redis = new FakeRedis();
   const session = createSessionManager(redis, {}, () => {});
-  await session.registerPlayers('h@x.com', '');
+  await session.registerPlayers('h@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   const cur = await session.getCurrentSession();
   assert.equal(cur.player1IsBot, false); assert.equal(cur.player2IsBot, true);

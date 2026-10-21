@@ -44,8 +44,12 @@
             </label>
           </div>
           <div class="setup-msg mono" data-setup-msg="1" hidden></div>
-          <label class="label" for="email1">E-mail (deixe em branco para anônimo)</label>
+          <label class="label" for="email1">E-mail</label>
           <input id="email1" name="player1Email" type="email" autocomplete="off" spellcheck="false" placeholder="jogador@exemplo.com" inputmode="email">
+          <div class="contact-row">
+            <label class="nosignup"><input type="checkbox" data-nosignup="1"> Sem cadastro</label>
+            <button type="button" class="btn-small" data-link-player="1" hidden>Vincular a esta corrida</button>
+          </div>
           <div class="field-error mono" data-error="1" hidden></div>
           <ol class="steps mono" data-steps="1" aria-label="Etapas do jogador 1">
             <li data-step="registered">Registrado</li><li data-step="racing">Correndo</li><li data-step="finished">Terminou</li>
@@ -63,16 +67,23 @@
             </label>
           </div>
           <div class="setup-msg mono" data-setup-msg="2" hidden></div>
-          <label class="label" for="email2">E-mail (deixe em branco para anônimo)</label>
+          <label class="label" for="email2">E-mail</label>
           <input id="email2" name="player2Email" type="email" autocomplete="off" spellcheck="false" placeholder="jogador@exemplo.com" inputmode="email">
+          <div class="contact-row">
+            <label class="nosignup"><input type="checkbox" data-nosignup="2"> Sem cadastro</label>
+            <button type="button" class="btn-small" data-link-player="2" hidden>Vincular a esta corrida</button>
+          </div>
           <div class="field-error mono" data-error="2" hidden></div>
           <ol class="steps mono" data-steps="2" aria-label="Etapas do jogador 2">
             <li data-step="registered">Registrado</li><li data-step="racing">Correndo</li><li data-step="finished">Terminou</li>
           </ol>
         </div>
         <div class="actions">
-          <button type="submit" class="btn-primary" id="register-btn">Registrar jogadores</button>
+          <button type="button" class="btn-primary" data-start>Largar</button>
+          <button type="submit" class="btn-secondary" id="register-btn">Só registrar (o jogo larga)</button>
+          <button type="button" class="btn-danger" data-stop hidden>Parar corrida</button>
           <span class="hint mono" id="register-hint">Registre antes da largada. O registro vale por 1 hora.</span>
+          <span class="blockers mono" data-register-blockers hidden></span>
         </div>
       </form>
     </section>

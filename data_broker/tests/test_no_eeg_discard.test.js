@@ -19,7 +19,7 @@ function makeSession(config = {}) {
 
 test('test_NoEeg_human_finish_without_packets_is_discarded_loudly', async () => {
   const { redis, session, logs, discards } = makeSession();
-  await session.registerPlayers('h@x.com', '');
+  await session.registerPlayers('h@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   const s = await redis.hgetall('session:current');
 
@@ -36,7 +36,7 @@ test('test_NoEeg_human_finish_without_packets_is_discarded_loudly', async () => 
 
 test('test_NoEeg_duplicate_hasFinished_after_discard_is_ignored', async () => {
   const { redis, session, discards } = makeSession();
-  await session.registerPlayers('h@x.com', '');
+  await session.registerPlayers('h@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   await session.onHasFinished({ playerId: 1 });
   await session.onHasFinished({ playerId: 1 });
@@ -47,7 +47,7 @@ test('test_NoEeg_duplicate_hasFinished_after_discard_is_ignored', async () => {
 
 test('test_NoEeg_only_corrupt_packets_counts_as_no_eeg', async () => {
   const { redis, session, discards } = makeSession();
-  await session.registerPlayers('h@x.com', '');
+  await session.registerPlayers('h@x.com', '', { p2NoSignup: true });
   await session.onRaceStarted();
   const s = await redis.hgetall('session:current');
   await redis.rpush(`session:${s.id}:player:1:packets`, '{corrompido');
@@ -59,7 +59,7 @@ test('test_NoEeg_only_corrupt_packets_counts_as_no_eeg', async () => {
 
 test('test_NoEeg_minEegPackets_threshold_from_config', async () => {
   const below = makeSession({ minEegPackets: 3 });
-  await below.session.registerPlayers('h@x.com', '');
+  await below.session.registerPlayers('h@x.com', '', { p2NoSignup: true });
   await below.session.onRaceStarted();
   await below.session.onEsense({ player: 1, source: 'real', attention: 1, timeStamp: 1 });
   await below.session.onEsense({ player: 1, source: 'real', attention: 2, timeStamp: 2 });
@@ -68,7 +68,7 @@ test('test_NoEeg_minEegPackets_threshold_from_config', async () => {
   assert.equal(below.logs.find((l) => l.message === 'has_finished_discarded_no_eeg').minPackets, 3);
 
   const enough = makeSession({ minEegPackets: 3 });
-  await enough.session.registerPlayers('h@x.com', '');
+  await enough.session.registerPlayers('h@x.com', '', { p2NoSignup: true });
   await enough.session.onRaceStarted();
   for (let i = 0; i < 3; i += 1) await enough.session.onEsense({ player: 1, source: 'real', attention: i, timeStamp: i });
   await enough.session.onHasFinished({ playerId: 1 });
@@ -78,7 +78,6 @@ test('test_NoEeg_minEegPackets_threshold_from_config', async () => {
 
 test('test_NoEeg_bot_discard_hook_carries_reason', async () => {
   const { session, discards } = makeSession();
-  await session.registerPlayers('', '');
   await session.onRaceStarted();
   await session.onHasFinished({ playerId: 2 });
   assert.equal(discards.length, 1);

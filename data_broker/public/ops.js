@@ -78,30 +78,75 @@
     socket.on('hasFinished', (p) => { const slot = Number(p && p.playerId); if (slot === 1 || slot === 2) st.raceEvents[slot] = true; setTimeout(refresh, 400); setTimeout(refresh, 3000); });
   }
 
+  // ---------- NEU-140: contato, Sem cadastro e travas do Registrar ----------
+  const noSignupBox = (slot) => $(`[data-nosignup="${slot}"]`);
+  const cardStates = { 1: 'waiting', 2: 'waiting' };
+  // Campo de contato e caixa Sem cadastro (regra em OpsState.contactFieldState).
+  function applyContactField(slot, source) {
+    const input = $(`#email${slot}`); const box = noSignupBox(slot);
+    const f = S.contactFieldState({ source, noSignup: box.checked, state: cardStates[slot] });
+    box.closest('.nosignup').hidden = f.boxHidden; box.checked = f.boxChecked;
+    if (f.disabled && !input.disabled) { input.value = ''; input.disabled = true; }
+    else if (!f.disabled && input.disabled) input.disabled = false;
+    input.placeholder = f.placeholder;
+  }
+  function renderBlockers() {
+    const slots = {};
+    for (const slot of [1, 2]) {
+      const setup = setupOf(slot);
+      slots[slot] = { source: setup ? setup.source : null, email: $(`#email${slot}`).value, noSignup: noSignupBox(slot).checked, state: cardStates[slot] };
+    }
+    const list = S.registerBlockers(slots);
+    const btn = $('#register-btn');
+    btn.disabled = list.length > 0; btn.dataset.blocked = String(list.length > 0);
+    // NEU-140: corrida em andamento = algum lado de gente ainda correndo (igual ao raceInProgress
+    // do broker). A sessao segue `active` depois das duas chegadas, entao o status nao serve.
+    const start = S.startBlockers({
+      register: list,
+      gameConnected: !!(st.status && st.status.game && Number(st.status.game.connections) > 0),
+      panelConnected: !!(socket && st.socketOk),
+      sessionActive: [1, 2].some((slot) => ['racing', 'missing'].includes(cardStates[slot])),
+      sources: { 1: slots[1].source, 2: slots[2].source },
+    });
+    const sb = $('[data-start]');
+    sb.disabled = start.length > 0; sb.dataset.blocked = String(start.length > 0);
+    const el = $('[data-register-blockers]');
+    el.textContent = start.map((b) => b.text).join(' · '); el.hidden = start.length === 0;
+    return list;
+  }
+  for (const slot of [1, 2]) {
+    $(`#email${slot}`).addEventListener('input', renderBlockers);
+    noSignupBox(slot).addEventListener('change', () => { const s = setupOf(slot); applyContactField(slot, s ? s.source : null); renderBlockers(); });
+  }
+
   // ---------- registrar ----------
-  const form = $('#register-form');
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
+  // Devolve true se registrou. Usado pelo Registrar e pelo Largar (NEU-140).
+  async function registerPlayers() {
     const btn = $('#register-btn');
     const emails = { 1: S.normalizeEmail($('#email1').value), 2: S.normalizeEmail($('#email2').value) };
     let bad = false;
     for (const slot of [1, 2]) {
       const input = $(`#email${slot}`); const err = $(`[data-error="${slot}"]`);
       input.value = emails[slot];
-      if (!S.validateEmail(emails[slot])) { bad = true; input.setAttribute('aria-invalid', 'true'); err.textContent = 'E-mail inválido. Corrija ou deixe em branco para anônimo.'; err.hidden = false; }
+      if (!S.validateEmail(emails[slot])) { bad = true; input.setAttribute('aria-invalid', 'true'); err.textContent = 'E-mail inválido.'; err.hidden = false; }
       else { input.removeAttribute('aria-invalid'); err.hidden = true; err.textContent = ''; }
     }
-    if (bad) return;
+    if (bad) return false;
     btn.disabled = true;
+    let ok = false;
     try {
-      const res = await fetch('/api/players', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player1Email: emails[1], player2Email: emails[2] }) });
+      const res = await fetch('/api/players', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player1Email: emails[1], player2Email: emails[2], player1NoSignup: noSignupBox(1).checked, player2NoSignup: noSignupBox(2).checked }) });
       const body = await res.json().catch(() => ({}));
       if (res.status === 400 && body.error === 'invalid_email') {
         const slot = body.field === 'player2Email' ? 2 : 1;
         $(`#email${slot}`).setAttribute('aria-invalid', 'true'); const err = $(`[data-error="${slot}"]`); err.textContent = 'O broker recusou este e-mail.'; err.hidden = false;
+      } else if (res.status === 400 && body.error === 'missing_contact') {
+        const slot = body.field === 'player2Email' ? 2 : 1;
+        const err = $(`[data-error="${slot}"]`); err.textContent = 'Digite o contato ou marque Sem cadastro.'; err.hidden = false;
       } else if (!res.ok) {
         $('#register-hint').textContent = `Falha ao registrar (${res.status}). Tente de novo.`;
       } else {
+        ok = true;
         $('#register-hint').textContent = 'Registrados. Pode dar a largada — o registro vale por 1 hora.';
         st.raceEvents = { 1: false, 2: false };
         // Registrar a proxima dupla "reconhece" descartes anteriores: o alerta some.
@@ -110,12 +155,89 @@
       await refresh();
     } catch (e) {
       $('#register-hint').textContent = 'Sem resposta do broker. Ele está de pé?';
-    } finally { btn.disabled = false; }
+    } finally { renderBlockers(); }
+    return ok;
+  }
+  const form = $('#register-form');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (renderBlockers().length) return;
+    await registerPlayers();
+  });
+
+  // ---------- NEU-140: Largar = registra e manda o jogo largar (startRace) ----------
+  // Sem contagem no painel: o jogo ja mostra a dele. O Registrar fica como plano B
+  // (o jogo larga sozinho, como antes).
+  const startBtn = $('[data-start]');
+  startBtn.addEventListener('click', async () => {
+    if (renderBlockers().length || startBtn.disabled) return;
+    startBtn.disabled = true;
+    try {
+      if (!(await registerPlayers())) return;
+      const payload = S.startRacePayload({ 1: (setupOf(1) || {}).source, 2: (setupOf(2) || {}).source });
+      socket.emit('startRace', payload);
+      $('#register-hint').textContent = payload.gameMode === 'bot' ? 'Largada enviada ao jogo (P1 contra o bot).' : 'Largada enviada ao jogo.';
+    } finally { renderBlockers(); }
+  });
+
+  // ---------- NEU-140: vincular a corrida largada sem registro ----------
+  document.querySelectorAll('[data-link-player]').forEach((btn) => btn.addEventListener('click', async () => {
+    const slot = Number(btn.dataset.linkPlayer); const input = $(`#email${slot}`); const err = $(`[data-error="${slot}"]`);
+    const email = S.normalizeEmail(input.value);
+    if (!email || !S.validateEmail(email)) { input.setAttribute('aria-invalid', 'true'); err.textContent = 'Digite um e-mail válido para vincular.'; err.hidden = false; return; }
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/session/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player: slot, email, sessionId: st.session.sessionId }) });
+      const body = await res.json().catch(() => ({}));
+      const MSG = { session_changed: 'A corrida mudou. Confira o card e clique de novo.', already_finished: 'Essa corrida já terminou sem cadastro.', not_missing: 'Esse lado já tem cadastro.', no_active_session: 'Não há corrida em andamento.', invalid_email: 'O broker recusou este e-mail.' };
+      if (res.ok) { input.removeAttribute('aria-invalid'); err.hidden = true; err.textContent = ''; $('#register-hint').textContent = `Jogador ${slot} vinculado: ${email}.`; }
+      else { err.textContent = MSG[body.error] || `Falha ao vincular (${res.status}).`; err.hidden = false; }
+    } catch (e) {
+      err.textContent = 'Sem resposta do broker. Ele está de pé?'; err.hidden = false;
+    } finally { btn.disabled = false; await refresh(); }
+  }));
+
+  // ---------- NEU-140: Parar corrida (dois passos, sem confirm() que trava a tela) ----------
+  const stopBtn = $('[data-stop]');
+  let stopArmTimer = null;
+  // O Parar armado guarda a corrida (e os contatos) que o operador via no 1o clique.
+  let armed = null;
+  function disarmStop() { clearTimeout(stopArmTimer); stopArmTimer = null; armed = null; stopBtn.dataset.armed = 'false'; stopBtn.textContent = 'Parar corrida'; }
+  stopBtn.addEventListener('click', async () => {
+    if (!armed || !S.stopArmValid({ armedSessionId: armed.sessionId, session: st.session })) {
+      disarmStop();
+      armed = { sessionId: st.session.sessionId, contacts: { 1: st.session.player1Kind === 'contact' ? st.session.player1Email : '', 2: st.session.player2Kind === 'contact' ? st.session.player2Email : '' } };
+      stopBtn.dataset.armed = 'true'; stopBtn.textContent = 'Confirmar: parar sem gravar?';
+      stopArmTimer = setTimeout(disarmStop, 5000);
+      return;
+    }
+    // Contatos da corrida parada: voltam aos campos (sem registrar) se nao ha proxima dupla.
+    const { sessionId, contacts: stopped } = armed;
+    disarmStop();
+    stopBtn.disabled = true;
+    try {
+      const res = await fetch('/api/session/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }) });
+      const body = await res.json().catch(() => ({}));
+      // NEU-140: o jogo so precisa do evento (Thiago, 20/10). Sem broker no socket, pare a mao.
+      const told = res.ok && !!(socket && st.socketOk);
+      if (told) socket.emit('stopRace', {});
+      $('#register-hint').textContent = told ? 'Corrida parada, nada foi gravado. O jogo volta para a espera.'
+        : res.ok ? 'Corrida parada, nada foi gravado. Pare também no jogo.'
+        : body.error === 'session_changed' ? 'A corrida mudou antes da confirmação: nada foi parado. Confira e pare de novo.'
+          : res.status === 409 ? 'Não há corrida em andamento.' : `Falha ao parar (${res.status}).`;
+      await refresh();
+      if (res.ok && !st.session.pending && !$('#email1').value && !$('#email2').value) {
+        for (const slot of [1, 2]) if (stopped[slot] && !$(`#email${slot}`).disabled) $(`#email${slot}`).value = stopped[slot];
+        renderBlockers();
+      }
+    } catch (e) {
+      $('#register-hint').textContent = 'Sem resposta do broker. Ele está de pé?';
+    } finally { stopBtn.disabled = false; }
   });
 
   // ---------- render ----------
   // NEU-139 (spec B9): o envio a nuvem nao aparece no card; "Terminou" ja libera a proxima.
-  const STATE_LABEL = { waiting: 'Aguardando', registered: 'Registrado', anonymous: 'Anônimo — não vai para a nuvem', racing: 'Correndo', finished: 'Terminou', sent: 'Terminou', rejected: 'Terminou' };
+  const STATE_LABEL = { waiting: 'Aguardando', registered: 'Registrado', nosignup: 'Sem cadastro: não vai para a nuvem', bot: 'Bot: não vai para a nuvem', missing: 'Sem cadastro nesta corrida', lost: 'Terminou sem cadastro: não foi salva', racing: 'Correndo', finished: 'Terminou', sent: 'Terminou', rejected: 'Terminou' };
   const STEP_ORDER = ['registered', 'racing', 'finished'];
   const HINT_DEFAULT = 'Registre antes da largada. O registro vale por 1 hora.';
   function renderCards() {
@@ -125,6 +247,7 @@
       const state = S.cardState({ slot, session: st.session, pending: st.session.pending || null, raceEvents: st.raceEvents, history: st.history });
       const card = $(`.card[data-slot="${slot}"]`);
       card.dataset.state = state;
+      cardStates[slot] = state;
       $(`[data-state-chip="${slot}"]`).textContent = STATE_LABEL[state];
       const idx = state === 'sent' || state === 'rejected' ? 2 : STEP_ORDER.indexOf(state);
       card.querySelectorAll('.steps li').forEach((li, i) => { li.dataset.done = String(i < idx); li.dataset.current = String(i === idx); });
@@ -135,7 +258,13 @@
       if (locked) { input.value = st.session[`player${slot}Email`] || ''; input.readOnly = true; }
       else if (input.readOnly) { input.readOnly = false; input.value = ''; }
       else input.readOnly = false;
+      $(`[data-link-player="${slot}"]`).hidden = state !== 'missing';
+      const setup = setupOf(slot); applyContactField(slot, setup ? setup.source : null);
     }
+    $('[data-stop]').hidden = st.session.status !== 'active';
+    // Parar armado numa corrida que fechou ou mudou nao vale para a seguinte.
+    if (armed && !S.stopArmValid({ armedSessionId: armed.sessionId, session: st.session })) disarmStop();
+    renderBlockers();
   }
   function sparkPath(points) {
     if (points.length < 2) return '';
@@ -326,10 +455,12 @@
     const cur = setupOf(Number(btn.dataset.fillSlot));
     if (cur && cur.source === 'bot' && !(await postSetup('/api/players/source', { player: Number(btn.dataset.fillSlot), source: 'neurosky' }))) return;
     const slot = btn.dataset.fillSlot; const input = $(`#email${slot}`);
+    if (noSignupBox(slot).checked) { noSignupBox(slot).checked = false; applyContactField(slot, 'neurosky'); }
     input.value = btn.dataset.contact;
     input.removeAttribute('aria-invalid'); const err = $(`[data-error="${slot}"]`); err.hidden = true; err.textContent = '';
     $('[data-recent-hint]').textContent = `Jogador ${slot}: ${btn.dataset.contact}. Confira e registre.`;
     input.focus();
+    renderBlockers();
   });
   $('[data-recent-clear]').addEventListener('click', async () => {
     if (!window.confirm('Apagar a lista de últimos jogadores deste PC? Não dá para desfazer.')) return;
@@ -373,9 +504,7 @@
         b.title = locked ? 'Travado durante a corrida' : !setup ? 'Sem resposta do broker' : '';
       });
       // Bot desliga o campo de contato (spec B2): nada a cadastrar, nada vai para a nuvem.
-      const input = $(`#email${slot}`);
-      if (source === 'bot' && !input.disabled) { input.value = ''; input.disabled = true; input.placeholder = 'Bot: não vai para a nuvem'; }
-      else if (source !== 'bot' && input.disabled) { input.disabled = false; input.placeholder = 'jogador@exemplo.com'; }
+      applyContactField(slot, source);
       const piece = st.status && st.status.pieces && st.status.pieces[`gesture-p${slot}`];
       const inUse = piece && piece.connected ? (piece.camera ?? (piece.meta && piece.meta.camera) ?? null) : null;
       const chosen = setup ? setup.camera : null;

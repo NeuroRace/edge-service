@@ -13,6 +13,7 @@ const { randomUUID } = require('node:crypto');
 // Mesma regra de e-mail da tela de operacao (public/ops_state.js): um so lugar.
 const { normalizeEmail, validateEmail, RACE_LOCK_MS } = require('./public/ops_state');
 const { PLAYER_SETUP_KEY } = require('./player_setup');
+const { CLOSE_SCRIPT, LINK_SCRIPT, ENQUEUE_SCRIPT } = require('./session_scripts');
 
 // ioredis `multi().exec()` resolve com um array de tuplas [err, result] e NAO
 // rejeita quando um comando individual falha — so rejeita em abort de transacao.
@@ -37,9 +38,48 @@ async function execMulti(multi) {
 const RECENT_PLAYERS = 'players:recent';
 const RECENT_PLAYERS_MAX = 200;
 
+// NEU-140 (spec B8a): como cada lado entrou na corrida. So `contact` vai para a nuvem.
+const KINDS = ['contact', 'nosignup', 'bot', 'missing'];
+function kindOf(session, n) {
+  const k = session && session[`player${n}Kind`];
+  if (KINDS.includes(k)) return k;
+  // Sessao gravada antes da NEU-140: so havia IsBot.
+  return session && session[`player${n}IsBot`] === 'true' ? 'bot' : 'contact';
+}
+
 function createSessionManager(redis, config, log, hooks = {}) {
   const now = typeof hooks.now === 'function' ? hooks.now : Date.now;
   const minEegPackets = Number(config?.minEegPackets) || 1;
+  const SESSION_KEY = 'session:current';
+  const packetsKey = (id, n) => `session:${id}:player:${n}:packets`;
+  // eSense de sessao fechada: um log por sessao, nao um por pacote (1/s por jogador).
+  const loggedClosed = new Set();
+
+  // NEU-140: fecha a sessao `id` de forma atomica (so se ainda for a atual e estiver aberta).
+  async function closeSession(id, status, at) {
+    const closed = await redis.eval(CLOSE_SCRIPT, 3, SESSION_KEY, packetsKey(id, 1), packetsKey(id, 2), id, status, String(at));
+    return Number(closed) === 1;
+  }
+
+  // Le a sessao atual e aplica a expiracao (spec L3): 10 min da largada = esquecida.
+  async function readSession(at = now()) {
+    const s = await redis.hgetall(SESSION_KEY);
+    if (!s || !s.id) return null;
+    if (s.status === 'active' && !(at - Number(s.startedAt) < RACE_LOCK_MS)) {
+      if (await closeSession(s.id, 'expired', at)) {
+        log('info', 'session_expired', { sessionId: s.id, startedAt: Number(s.startedAt) });
+        // Revisao do PR #32: lado de gente que nao chegou em 10 min perdeu a corrida. Avisa
+        // como descarte (log + /health + painel), em vez de sumir so com o log acima.
+        for (const n of [1, 2]) {
+          if (!['contact', 'missing'].includes(kindOf(s, n)) || s[`player${n}Dispatched`] === 'true') continue;
+          log('warn', 'session_expired_unfinished', { playerId: n, sessionId: s.id, kind: kindOf(s, n) });
+          if (typeof hooks.onDiscarded === 'function') hooks.onDiscarded({ playerId: n, sessionId: s.id, reason: 'session_expired' });
+        }
+      }
+      return redis.hgetall(SESSION_KEY);
+    }
+    return s;
+  }
 
   // Identificacao por UUID Supabase ainda nao implementada (Stage 3 / NEU-37).
   // Ate la, todo e-mail e registrado sem validacao remota (`validated: false`).
@@ -66,26 +106,42 @@ function createSessionManager(redis, config, log, hooks = {}) {
     return { 1: setup.p1Source === 'bot', 2: setup.p2Source === 'bot' };
   }
 
-  async function registerPlayers(rawPlayer1Email, rawPlayer2Email) {
+  // NEU-140: lado NeuroSky vazio so vale com "Sem cadastro" marcado de proposito.
+  function sideOf(raw, field, isBot, noSignup) {
+    if (isBot) return { email: '', kind: 'bot', noSignup: false };
+    const email = checkEmail(raw, field);
+    if (email) return { email, kind: 'contact', noSignup: false };
+    if (noSignup === true) return { email: '', kind: 'nosignup', noSignup: true };
+    const err = new Error(`contato ausente em ${field}`);
+    err.code = 'missing_contact';
+    err.field = field;
+    throw err;
+  }
+
+  async function registerPlayers(rawPlayer1Email, rawPlayer2Email, { p1NoSignup = false, p2NoSignup = false } = {}) {
     const bots = await botSlots();
-    const player1Email = bots[1] ? '' : checkEmail(rawPlayer1Email, 'player1Email');
-    const player2Email = bots[2] ? '' : checkEmail(rawPlayer2Email, 'player2Email');
-    const player1 = await validateEmailRemote(player1Email);
-    const player2 = await validateEmailRemote(player2Email);
+    const side1 = sideOf(rawPlayer1Email, 'player1Email', bots[1], p1NoSignup);
+    const side2 = sideOf(rawPlayer2Email, 'player2Email', bots[2], p2NoSignup);
+    const player1 = await validateEmailRemote(side1.email);
+    const player2 = await validateEmailRemote(side2.email);
 
     const multi = redis
       .multi()
       .hset(
         'pending:players',
-        'player1Email', player1Email,
+        'player1Email', side1.email,
         'player1Uuid', player1.uuid || '',
-        'player2Email', player2Email,
+        'player1Kind', side1.kind,
+        'player1NoSignup', String(side1.noSignup),
+        'player2Email', side2.email,
         'player2Uuid', player2.uuid || '',
+        'player2Kind', side2.kind,
+        'player2NoSignup', String(side2.noSignup),
       )
       .expire('pending:players', 3600);
     // So cadastrados entram na lista (anonimo nunca). Registrar de novo so atualiza o horario.
     const at = now();
-    for (const email of [player1Email, player2Email]) if (email) multi.zadd(RECENT_PLAYERS, at, email);
+    for (const email of [side1.email, side2.email]) if (email) multi.zadd(RECENT_PLAYERS, at, email);
     multi.zremrangebyrank(RECENT_PLAYERS, 0, -(RECENT_PLAYERS_MAX + 1));
     await execMulti(multi);
 
@@ -94,12 +150,18 @@ function createSessionManager(redis, config, log, hooks = {}) {
   }
 
   async function onRaceStarted() {
-    const pending = await redis.hgetall('pending:players');
+    const pending = (await redis.hgetall('pending:players')) || {};
     const bots = await botSlots();
-    const player1Email = bots[1] ? '' : pending?.player1Email || '';
-    const player1Uuid = bots[1] ? '' : pending?.player1Uuid || '';
-    const player2Email = bots[2] ? '' : pending?.player2Email || '';
-    const player2Uuid = bots[2] ? '' : pending?.player2Uuid || '';
+    // NEU-140: Bot do painel manda; depois contato; depois "Sem cadastro" marcado; senao, esqueceram.
+    const sideAt = (n) => {
+      if (bots[n]) return { email: '', uuid: '', kind: 'bot' };
+      const email = pending[`player${n}Email`] || '';
+      if (email) return { email, uuid: pending[`player${n}Uuid`] || '', kind: 'contact' };
+      if (pending[`player${n}NoSignup`] === 'true') return { email: '', uuid: '', kind: 'nosignup' };
+      return { email: '', uuid: '', kind: 'missing' };
+    };
+    const p1 = sideAt(1);
+    const p2 = sideAt(2);
 
     // Limpa o estado da corrida anterior antes de criar a nova. Sem isto, as flags
     // `player{N}Dispatched` da corrida passada sobrevivem e fazem o `hasFinished`
@@ -107,7 +169,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
     // pacotes da corrida anterior vazam no Redis (leak).
     const previous = await redis.hgetall('session:current');
     const id = randomUUID();
-    const startedAt = Date.now();
+    const startedAt = now();
 
     const multi = redis.multi();
     if (previous && previous.id) {
@@ -121,20 +183,24 @@ function createSessionManager(redis, config, log, hooks = {}) {
         'id', id,
         'startedAt', String(startedAt),
         'status', 'active',
-        'player1Email', player1Email,
-        'player1Uuid', player1Uuid,
-        'player1IsBot', player1Email === '' ? 'true' : 'false',
-        'player2Email', player2Email,
-        'player2Uuid', player2Uuid,
-        'player2IsBot', player2Email === '' ? 'true' : 'false',
+        'player1Email', p1.email,
+        'player1Uuid', p1.uuid,
+        'player1Kind', p1.kind,
+        'player1IsBot', p1.kind === 'contact' ? 'false' : 'true',
+        'player2Email', p2.email,
+        'player2Uuid', p2.uuid,
+        'player2Kind', p2.kind,
+        'player2IsBot', p2.kind === 'contact' ? 'false' : 'true',
       )
       .del('pending:players');
     await execMulti(multi);
 
     log('info', 'race_started', {
       sessionId: id,
-      player1IsBot: player1Email === '',
-      player2IsBot: player2Email === '',
+      player1Kind: p1.kind,
+      player2Kind: p2.kind,
+      player1IsBot: p1.kind !== 'contact',
+      player2IsBot: p2.kind !== 'contact',
     });
     log('info', 'session_transition', { from: 'setup', to: 'active', sessionId: id });
   }
@@ -143,16 +209,21 @@ function createSessionManager(redis, config, log, hooks = {}) {
     // Bots nao sao persistidos (apenas jogadores humanos geram telemetria de corrida).
     if (payload.source === 'bot') return;
 
-    const session = await redis.hgetall('session:current');
+    const session = await readSession();
     if (!session || !session.id) {
       log('warn', 'esense_no_active_session', { player: payload.player });
       return;
     }
+    if (session.status !== 'active') {
+      if (!loggedClosed.has(session.id)) {
+        if (loggedClosed.size > 100) loggedClosed.clear();
+        loggedClosed.add(session.id);
+        log('warn', 'esense_ignored_closed_session', { sessionId: session.id, status: session.status });
+      }
+      return;
+    }
 
-    await redis.rpush(
-      `session:${session.id}:player:${payload.player}:packets`,
-      JSON.stringify(payload),
-    );
+    await redis.rpush(packetsKey(session.id, payload.player), JSON.stringify(payload));
   }
 
   async function onHasFinished(payload) {
@@ -164,15 +235,37 @@ function createSessionManager(redis, config, log, hooks = {}) {
       return;
     }
 
-    const session = await redis.hgetall('session:current');
+    const session = await readSession();
     if (!session || !session.id) {
       log('warn', 'has_finished_no_active_session', { playerId });
       return;
     }
+    if (session.status !== 'active') {
+      log('warn', 'has_finished_ignored_closed_session', { playerId, sessionId: session.id, status: session.status });
+      return;
+    }
 
-    if (session[`player${playerId}IsBot`] === 'true') {
-      // NEU-73: antes era um return mudo — a forma mais provavel de perder a corrida de
-      // uma pessoa real (largada sem registrar e-mails) sem ninguem perceber.
+    const dispatchedKey = `player${playerId}Dispatched`;
+
+    // Claim atomico primeiro (bug H3: HSETNX), depois a releitura. NEU-140: depois do claim
+    // nenhum vinculo grava (LINK_SCRIPT confere o Dispatched), entao a releitura e a verdade.
+    const claimed = await redis.hsetnx(SESSION_KEY, dispatchedKey, 'true');
+    if (claimed === 0) {
+      log('warn', 'has_finished_duplicate', { playerId, sessionId: session.id });
+      return;
+    }
+    const current = await redis.hgetall(SESSION_KEY);
+    if (!current || current.id !== session.id || current.status !== 'active') {
+      log('warn', 'has_finished_ignored_closed_session', { playerId, sessionId: session.id, status: current && current.status });
+      return;
+    }
+
+    const kind = kindOf(current, playerId);
+    const listKey = packetsKey(session.id, playerId);
+    // Spec B8a: lado que nao vai para a nuvem nao deixa os pacotes no Redis ate a proxima largada.
+    if (kind !== 'contact') await redis.del(listKey);
+    if (kind === 'missing') {
+      // NEU-73: largada sem registro — a forma mais provavel de perder a corrida de uma pessoa.
       log('warn', 'has_finished_discarded_bot', {
         playerId, sessionId: session.id, reason: 'no_email_registered',
       });
@@ -181,22 +274,14 @@ function createSessionManager(redis, config, log, hooks = {}) {
       }
       return;
     }
-
-    const dispatchedKey = `player${playerId}Dispatched`;
-
-    // Claim atomico: garante que apenas um `hasFinished` consolida o jogador,
-    // mesmo com eventos concorrentes/reemitidos (bug H3 — substitui o
-    // read-check-write nao atomico por um HSETNX).
-    const claimed = await redis.hsetnx('session:current', dispatchedKey, 'true');
-    if (claimed === 0) {
-      log('warn', 'has_finished_duplicate', { playerId, sessionId: session.id });
+    if (kind !== 'contact') {
+      // Bot ou "Sem cadastro": escolha do operador, nada a gravar e nada a alertar.
+      log('info', 'has_finished_not_saved', { playerId, sessionId: session.id, kind });
       return;
     }
 
-    const packetsKey = `session:${session.id}:player:${playerId}:packets`;
-
     try {
-      const rawPackets = await redis.lrange(packetsKey, 0, -1);
+      const rawPackets = await redis.lrange(listKey, 0, -1);
 
       // Parse defensivo: um pacote corrompido nao derruba a corrida inteira (bug H2).
       const packets = [];
@@ -222,7 +307,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
       // para a fila, de forma barulhenta (log + /health + tela). O claim fica gravado:
       // um hasFinished duplicado nao dispara um segundo descarte.
       if (packets.length < minEegPackets) {
-        await redis.del(packetsKey);
+        await redis.del(listKey);
         log('warn', 'has_finished_discarded_no_eeg', {
           playerId, sessionId: session.id, reason: 'no_eeg_signal', packets: packets.length, minPackets: minEegPackets,
         });
@@ -238,19 +323,22 @@ function createSessionManager(redis, config, log, hooks = {}) {
         sessionId: session.id,
         persistedAt: Date.now(),
         payload: {
-          email: session[`player${playerId}Email`],
-          playerUuid: session[`player${playerId}Uuid`] || null,
+          email: current[`player${playerId}Email`],
+          playerUuid: current[`player${playerId}Uuid`] || null,
           startedAt: Number(session.startedAt),
           finishedAt: Date.now(),
           packets,
         },
       };
 
-      // Persiste o resultado e remove a lista de pacotes ja consolidada (anti-leak).
-      // execMulti garante que uma falha por-comando nao passe como sucesso.
-      await execMulti(
-        redis.multi().rpush('dispatch:queue', JSON.stringify(record)).del(packetsKey),
-      );
+      // Persiste o resultado e remove a lista de pacotes ja consolidada (anti-leak), so se a
+      // sessao ainda estiver aberta: um Parar no meio ganha (ENQUEUE_SCRIPT, atomico).
+      const enqueued = await redis.eval(ENQUEUE_SCRIPT, 3, SESSION_KEY, 'dispatch:queue', listKey, session.id, JSON.stringify(record));
+      if (Number(enqueued) !== 1) {
+        const closed = await redis.hgetall(SESSION_KEY);
+        log('warn', 'has_finished_ignored_closed_session', { playerId, sessionId: session.id, status: closed && closed.status });
+        return;
+      }
 
       log('info', 'race_result_persisted', {
         jobId: record.jobId,
@@ -273,20 +361,55 @@ function createSessionManager(redis, config, log, hooks = {}) {
     }
   }
 
+  // NEU-140 (spec C6): Parar. Nada da corrida e gravado; a proxima dupla (pending) fica.
+  // `expectedId` (opcional) = a corrida que o operador via: o jogo pode ter largado outra
+  // entre a tela e o clique, e essa nao pode ser parada no lugar da que ele viu.
+  async function stopRace(expectedId) {
+    const at = now();
+    const s = await readSession(at);
+    if (!s || s.status !== 'active') return { ok: false, error: 'no_active_session' };
+    if (expectedId && expectedId !== s.id) return { ok: false, error: 'session_changed' };
+    if (!(await closeSession(s.id, 'cancelled', at))) return { ok: false, error: 'no_active_session' };
+    log('info', 'race_stopped', { sessionId: s.id, afterMs: at - Number(s.startedAt) });
+    return { ok: true, sessionId: s.id };
+  }
+
+  // NEU-140: o jogo largou sem registro (lado missing); o operador vincula o contato
+  // ate o hasFinished daquele lado. Atomico contra o claim do hasFinished (LINK_SCRIPT).
+  async function linkPlayer(player, rawEmail, expectedId) {
+    if (player !== 1 && player !== 2) return { ok: false, error: 'invalid_player' };
+    const email = normalizeEmail(rawEmail);
+    if (!email || !validateEmail(email)) return { ok: false, error: 'invalid_email' };
+    const s = await readSession();
+    if (!s || s.status !== 'active') return { ok: false, error: 'no_active_session' };
+    // Mesma regra do Parar: a pessoa da corrida que o operador via nao vai para a seguinte.
+    if (expectedId && expectedId !== s.id) return { ok: false, error: 'session_changed' };
+    const result = await redis.eval(LINK_SCRIPT, 1, SESSION_KEY, String(player), email, s.id);
+    if (result !== 'ok') return { ok: false, error: String(result) };
+    await execMulti(redis.multi().zadd(RECENT_PLAYERS, now(), email).zremrangebyrank(RECENT_PLAYERS, 0, -(RECENT_PLAYERS_MAX + 1)));
+    log('info', 'player_linked', { sessionId: s.id, playerId: player });
+    return { ok: true, session: await getCurrentSession() };
+  }
+
   // NEU-86: ha corrida de gente em andamento? Trava a troca de fonte e camera.
+  // NEU-140: so sessao aberta; lado esquecido (missing) conta como gente.
   async function raceInProgress(at = now()) {
-    const s = await redis.hgetall('session:current');
+    const s = await readSession(at);
     if (!s || s.status !== 'active') return false;
-    if (!(at - Number(s.startedAt) < RACE_LOCK_MS)) return false;
-    return [1, 2].some((n) => s[`player${n}IsBot`] !== 'true' && s[`player${n}Dispatched`] !== 'true');
+    return [1, 2].some((n) => ['contact', 'missing'].includes(kindOf(s, n)) && s[`player${n}Dispatched`] !== 'true');
   }
 
   async function getCurrentSession() {
-    const session = await redis.hgetall('session:current');
+    const session = await readSession();
     // `pending` = jogadores registrados para a PROXIMA corrida (tela de operacao).
     const pendingRaw = await redis.hgetall('pending:players');
     const pending = pendingRaw && pendingRaw.player1Email !== undefined
-      ? { player1Email: pendingRaw.player1Email, player2Email: pendingRaw.player2Email }
+      ? {
+        player1Email: pendingRaw.player1Email,
+        player2Email: pendingRaw.player2Email,
+        player1Kind: pendingRaw.player1Kind || (pendingRaw.player1Email ? 'contact' : 'missing'),
+        player2Kind: pendingRaw.player2Kind || (pendingRaw.player2Email ? 'contact' : 'missing'),
+      }
       : null;
     // `pending` so aparece quando existe (mantem o shape antigo para os chamadores atuais).
     if (!session || !session.id) return pending ? { status: 'none', pending } : { status: 'none' };
@@ -298,6 +421,8 @@ function createSessionManager(redis, config, log, hooks = {}) {
       player2Email: session.player2Email,
       player1IsBot: session.player1IsBot === 'true',
       player2IsBot: session.player2IsBot === 'true',
+      player1Kind: kindOf(session, 1),
+      player2Kind: kindOf(session, 2),
       // hasFinished ja consolidado (claim persistido) — sobrevive a reload da tela.
       player1Finished: session.player1Dispatched === 'true',
       player2Finished: session.player2Dispatched === 'true',
@@ -328,7 +453,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
     log('info', 'recent_players_cleared', {});
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress };
+  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress, stopRace, linkPlayer };
 }
 
 module.exports = { createSessionManager, execMulti, RECENT_PLAYERS_MAX };

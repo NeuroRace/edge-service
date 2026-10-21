@@ -129,3 +129,17 @@ input[aria-invalid="true"] { border-color: var(--error); }
 .setup-msg { font-size: 0.75rem; color: var(--warn); margin: -0.2rem 0 0.6rem; }
 @media (max-width: 720px) { .cards, .signals { grid-template-columns: 1fr; } .signal-body { grid-template-columns: 90px 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* NEU-140: Sem cadastro, travas do Registrar, Vincular e Parar */
+.contact-row { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.4rem; flex-wrap: wrap; }
+.nosignup { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: var(--fg-muted); cursor: pointer; }
+.nosignup[hidden] { display: none; }
+.blockers { color: var(--warn); }
+.btn-primary[disabled][data-blocked="true"] { cursor: not-allowed; }
+/* NEU-140: "So registrar" e o plano B ao lado do Largar. */
+.btn-secondary { font: inherit; font-weight: 600; background: transparent; color: var(--fg-strong); border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 1.1rem; cursor: pointer; }
+.btn-secondary:focus-visible { outline: 2px solid var(--fg-strong); outline-offset: 2px; } .btn-secondary[disabled] { opacity: 0.6; cursor: not-allowed; }
+.btn-danger { font: inherit; font-weight: 600; background: transparent; color: var(--error); border: 1px solid var(--error); border-radius: 10px; padding: 0.7rem 1.1rem; cursor: pointer; }
+.btn-danger[data-armed="true"] { background: var(--error); color: var(--bg); }
+.btn-danger:focus-visible { outline: 2px solid var(--fg-strong); outline-offset: 2px; } .btn-danger[disabled] { opacity: 0.6; cursor: wait; }
+.card[data-state="missing"] .state-chip, .card[data-state="lost"] .state-chip { color: var(--error); border-color: var(--error); }

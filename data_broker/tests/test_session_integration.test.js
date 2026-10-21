@@ -31,7 +31,7 @@ test('integracao: fluxo completo persiste resultado no Redis real', { skip }, as
   const redis = await freshClient();
   try {
     const session = createSessionManager(redis, {}, noopLog);
-    await session.registerPlayers('human@x.com', '');
+    await session.registerPlayers('human@x.com', '', { p2NoSignup: true });
     await session.onRaceStarted();
     await session.onEsense({ player: 1, source: 'real', attention: 70, timeStamp: 1 });
     await session.onEsense({ player: 1, source: 'real', attention: 71, timeStamp: 2 });
@@ -54,14 +54,14 @@ test('integracao: flag Dispatched nao vaza entre corridas (HSETNX real)', { skip
     const session = createSessionManager(redis, {}, noopLog);
 
     // Corrida 1
-    await session.registerPlayers('a@x.com', '');
+    await session.registerPlayers('a@x.com', '', { p2NoSignup: true });
     await session.onRaceStarted();
     await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
     await session.onHasFinished({ playerId: 1 });
     await session.onHasFinished({ playerId: 1 }); // duplicado real -> HSETNX bloqueia
 
     // Corrida 2
-    await session.registerPlayers('b@x.com', '');
+    await session.registerPlayers('b@x.com', '', { p2NoSignup: true });
     await session.onRaceStarted();
     await session.onEsense({ player: 1, source: 'real', attention: 50, timeStamp: 1 });
     await session.onHasFinished({ playerId: 1 });
@@ -86,7 +86,7 @@ async function withRedis(fn) {
   await redis.del(...KEYS);
   try { await fn(redis, createSessionManager(redis, {}, () => {})); } finally {
     await redis.del(...KEYS);
-    await redis.zrem('players:recent', 'humano-neu86@x.com', 'bot-neu86@x.com');
+    await redis.zrem('players:recent', 'humano-neu86@x.com', 'bot-neu86@x.com', 'late@x.com', 'a@x.com', 'b@x.com', 'c@x.com');
     await redis.quit();
   }
 }
@@ -114,5 +114,61 @@ test('integracao B2: Bot x Bot = 0 registros', { skip }, async () => {
     await redis.hset(PLAYER_SETUP_KEY, 'p1Source', 'bot', 'p2Source', 'bot');
     await race(session, { p1: true, p2: true });
     assert.equal(await redis.llen('dispatch:queue'), 0);
+  });
+});
+
+// NEU-140, contra Redis real: os scripts Lua (vincular, Parar, expirar) e o CA de C6.
+test('integracao NEU-140: largou sem registro, vinculou no meio = 1 registro com o e-mail', { skip }, async () => {
+  await withRedis(async (redis, session) => {
+    await session.onRaceStarted();
+    await session.onEsense({ player: 1, source: 'real', attention: 60, timeStamp: 1 });
+    assert.equal((await session.linkPlayer(1, 'late@x.com')).ok, true);
+    await session.onHasFinished({ playerId: 1 });
+    await session.onHasFinished({ playerId: 2 });
+    const queue = await redis.lrange('dispatch:queue', 0, -1);
+    assert.equal(queue.length, 1); assert.equal(JSON.parse(queue[0]).payload.email, 'late@x.com');
+    assert.deepEqual(await session.linkPlayer(2, 'x@x.com'), { ok: false, error: 'already_finished' });
+  });
+});
+
+test('integracao NEU-140: Parar e depois hasFinished = fila sem mudanca; a proxima consolida (CA C6)', { skip }, async () => {
+  await withRedis(async (redis, session) => {
+    await session.registerPlayers('a@x.com', 'b@x.com');
+    await session.onRaceStarted();
+    await session.onEsense({ player: 1, source: 'real', attention: 60, timeStamp: 1 });
+    assert.equal((await session.stopRace()).ok, true);
+    await session.onHasFinished({ playerId: 1 });
+    assert.equal(await redis.llen('dispatch:queue'), 0);
+    await session.registerPlayers('c@x.com', '', { p2NoSignup: true });
+    await session.onRaceStarted();
+    await session.onEsense({ player: 1, source: 'real', attention: 60, timeStamp: 1 });
+    await session.onHasFinished({ playerId: 1 });
+    assert.equal(JSON.parse((await redis.lrange('dispatch:queue', 0, -1))[0]).payload.email, 'c@x.com');
+  });
+});
+
+test('integracao NEU-140: enfileirar so com a sessao aberta (Lua real)', { skip }, async () => {
+  await withRedis(async (redis) => {
+    const { ENQUEUE_SCRIPT } = require('../session_scripts');
+    await redis.hset('session:current', 'id', 's1', 'status', 'cancelled', 'startedAt', '1');
+    await redis.rpush('session:s1:player:1:packets', 'x');
+    assert.equal(await redis.eval(ENQUEUE_SCRIPT, 3, 'session:current', 'dispatch:queue', 'session:s1:player:1:packets', 's1', '{}'), 0);
+    assert.equal(await redis.llen('dispatch:queue'), 0);
+    await redis.hset('session:current', 'status', 'active');
+    assert.equal(await redis.eval(ENQUEUE_SCRIPT, 3, 'session:current', 'dispatch:queue', 'session:s1:player:1:packets', 'outra', '{}'), 0);
+    assert.equal(await redis.eval(ENQUEUE_SCRIPT, 3, 'session:current', 'dispatch:queue', 'session:s1:player:1:packets', 's1', '{"ok":1}'), 1);
+    assert.deepEqual(await redis.lrange('dispatch:queue', 0, -1), ['{"ok":1}']);
+    assert.equal(await redis.exists('session:s1:player:1:packets'), 0);
+  });
+});
+
+test('integracao NEU-140: fechar confere o id (Lua real)', { skip }, async () => {
+  await withRedis(async (redis) => {
+    const { CLOSE_SCRIPT } = require('../session_scripts');
+    await redis.hset('session:current', 'id', 'novo', 'status', 'active', 'startedAt', '1');
+    assert.equal(await redis.eval(CLOSE_SCRIPT, 3, 'session:current', 'p1', 'p2', 'velho', 'cancelled', '2'), 0);
+    assert.equal(await redis.hget('session:current', 'status'), 'active');
+    assert.equal(await redis.eval(CLOSE_SCRIPT, 3, 'session:current', 'p1', 'p2', 'novo', 'expired', '2'), 1);
+    assert.equal(await redis.hget('session:current', 'status'), 'expired');
   });
 });
