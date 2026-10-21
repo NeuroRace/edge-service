@@ -32,6 +32,8 @@ services:
       DISPATCH_BACKOFF_MAX_MS: ${DISPATCH_BACKOFF_MAX_MS:-10000}
       # Corrida humana com menos pacotes de EEG que isto e descartada (NEU-104).
       MIN_EEG_PACKETS: ${MIN_EEG_PACKETS:-1}
+      # NEU-179: chegada antes disto (segundos da largada) e de outra corrida e e ignorada.
+      MIN_RACE_SECONDS: ${MIN_RACE_SECONDS:-15}
     # So no proprio PC (NEU-138): 127.0.0.1 e ::1, porque no Windows `localhost` resolve ::1
     # primeiro e o jogo usa localhost:3000. O PC central abre tambem no cabo do coletor com
     # docker-compose.central.yml. Nunca publicar sem IP: o Docker Desktop libera a porta no

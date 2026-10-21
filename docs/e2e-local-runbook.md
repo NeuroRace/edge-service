@@ -41,7 +41,9 @@ docker run --rm -d -p 6379:6379 --name neurorace-e2e-redis redis:7
 # 2. Broker local. ATENÇÃO: a porta 3000 pode já estar ocupada nesta máquina
 #    (ex.: um app Rails). Use uma porta livre e aponte o harness para ela.
 cd data_broker
-REDIS_URL=redis://127.0.0.1:6379 BROKER_PORT=34100 node index.js &
+REDIS_URL=redis://127.0.0.1:6379 BROKER_PORT=34100 MIN_RACE_SECONDS=0 node index.js &
+#    MIN_RACE_SECONDS=0: o harness termina a corrida em ~1 s, e o piso de 15 s (NEU-179)
+#    ignoraria a chegada. Com o jogo falso (jogo-falso.js, duracao >= 15 s) nao precisa.
 
 # 3. Harness: registra 2 jogadores + emite a corrida
 node e2e/race-producer.js --broker http://127.0.0.1:34100 \
@@ -85,7 +87,7 @@ supabase functions serve ingest-race --env-file supabase/functions/.env
 
 # B. Broker + dispatcher LIGADO, apontando para a função LOCAL
 cd ../edge-service/data_broker
-REDIS_URL=redis://127.0.0.1:6379 BROKER_PORT=34100 \
+REDIS_URL=redis://127.0.0.1:6379 BROKER_PORT=34100 MIN_RACE_SECONDS=0 \
   API_URL=http://host.docker.internal:54321/functions/v1/ingest-race \
   EDGE_INGEST_TOKEN=<token do supabase/functions/.env local> \
   node index.js &
