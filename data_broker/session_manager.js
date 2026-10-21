@@ -50,10 +50,25 @@ function kindOf(session, n) {
 function createSessionManager(redis, config, log, hooks = {}) {
   const now = typeof hooks.now === 'function' ? hooks.now : Date.now;
   const minEegPackets = Number(config?.minEegPackets) || 1;
+  // NEU-179: sem config (testes) nao ha piso; no estande vem do config.js (15 s).
+  const minRaceMs = Math.max(0, Number(config?.minRaceSeconds) || 0) * 1000;
   const SESSION_KEY = 'session:current';
   const packetsKey = (id, n) => `session:${id}:player:${n}:packets`;
   // eSense de sessao fechada: um log por sessao, nao um por pacote (1/s por jogador).
   const loggedClosed = new Set();
+
+  // Revisao do #41 (NEU-179): os eventos chegam do socket sem await entre si. Sem fila, o
+  // raceStopped (o ultimo chega e o jogo volta para a espera na hora) fechava a sessao entre
+  // o claim e o ENQUEUE do hasFinished: a chegada sumia em silencio, ou virava descarte falso
+  // de "sem EEG" (o CLOSE apagava os pacotes). Um evento do socket por vez, na ordem.
+  let tail = Promise.resolve();
+  function serial(fn) {
+    return (...args) => {
+      const run = tail.then(() => fn(...args));
+      tail = run.catch(() => {});
+      return run;
+    };
+  }
 
   // NEU-140: fecha a sessao `id` de forma atomica (so se ainda for a atual e estiver aberta).
   async function closeSession(id, status, at) {
@@ -247,6 +262,18 @@ function createSessionManager(redis, config, log, hooks = {}) {
       return;
     }
 
+    // NEU-179: o hasFinished nao diz de qual corrida e. Um atrasado da corrida anterior
+    // caia nesta com tempo falso (0,45 s no teste) e ganhava a rodada. Antes do piso, ignora
+    // SEM o claim: a chegada de verdade deste lado ainda conta.
+    const elapsedMs = now() - Number(session.startedAt);
+    if (minRaceMs > 0 && elapsedMs < minRaceMs) {
+      log('warn', 'has_finished_too_soon', { playerId, sessionId: session.id, elapsedMs, minRaceMs });
+      if (typeof hooks.onFinishIgnored === 'function') {
+        hooks.onFinishIgnored({ playerId, sessionId: session.id, reason: 'too_soon', elapsedMs, minRaceMs });
+      }
+      return;
+    }
+
     const dispatchedKey = `player${playerId}Dispatched`;
 
     // Claim atomico primeiro (bug H3: HSETNX), depois a releitura. NEU-140: depois do claim
@@ -309,6 +336,13 @@ function createSessionManager(redis, config, log, hooks = {}) {
       // para a fila, de forma barulhenta (log + /health + tela). O claim fica gravado:
       // um hasFinished duplicado nao dispara um segundo descarte.
       if (packets.length < minEegPackets) {
+        // Revisao do #41: um Parar entre a releitura e o lrange apaga os pacotes (CLOSE). Sessao
+        // fechada no meio nao e "sem EEG": o Parar ganha e nao ha banner falso de fone.
+        const still = await redis.hgetall(SESSION_KEY);
+        if (!still || still.id !== session.id || still.status !== 'active') {
+          log('warn', 'has_finished_ignored_closed_session', { playerId, sessionId: session.id, status: still && still.status });
+          return;
+        }
         await redis.del(listKey);
         log('warn', 'has_finished_discarded_no_eeg', {
           playerId, sessionId: session.id, reason: 'no_eeg_signal', packets: packets.length, minPackets: minEegPackets,
@@ -382,6 +416,22 @@ function createSessionManager(redis, config, log, hooks = {}) {
     log('info', 'race_stopped', { sessionId: s.id, afterMs: at - Number(s.startedAt), saved });
     // `saved` so aparece quando alguem ja foi gravado: sem ninguem, a resposta e a de antes.
     return saved.length ? { ok: true, sessionId: s.id, saved } : { ok: true, sessionId: s.id };
+  }
+
+  // NEU-179: o jogo avisa que parou e voltou para a espera. Fecha a sessao, e o painel libera
+  // o Largar sem precisar do Parar. Quem ja chegou fica na fila; quem nao chegou perde a
+  // corrida, como no Parar. Um raceStopped atrasado da corrida anterior chegaria logo depois
+  // da largada desta: antes do piso, ele e ignorado.
+  async function onRaceStopped() {
+    const at = now();
+    const s = await readSession(at);
+    if (!s || s.status !== 'active') return;
+    const afterMs = at - Number(s.startedAt);
+    if (minRaceMs > 0 && afterMs < minRaceMs) {
+      log('warn', 'race_stopped_too_soon', { sessionId: s.id, afterMs, minRaceMs });
+      return;
+    }
+    if (await closeSession(s.id, 'stopped', at)) log('info', 'race_stopped_by_game', { sessionId: s.id, afterMs });
   }
 
   // NEU-140: o jogo largou sem registro (lado missing); o operador vincula o contato
@@ -469,7 +519,17 @@ function createSessionManager(redis, config, log, hooks = {}) {
     log('info', 'recent_players_cleared', {});
   }
 
-  return { registerPlayers, onRaceStarted, onEsense, onHasFinished, getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress, stopRace, linkPlayer };
+  return {
+    registerPlayers,
+    onRaceStarted: serial(onRaceStarted),
+    onEsense: serial(onEsense),
+    onHasFinished: serial(onHasFinished),
+    onRaceStopped: serial(onRaceStopped),
+    // Parar e Vincular vem do painel (HTTP) e ja sao atomicos contra o claim (Lua): ficam fora
+    // da fila, de proposito. Um Parar no meio do hasFinished continua ganhando (revisao do #32).
+    stopRace, linkPlayer,
+    getCurrentSession, getDispatchHistory, getRecentPlayers, clearRecentPlayers, raceInProgress,
+  };
 }
 
 module.exports = { createSessionManager, execMulti, RECENT_PLAYERS_MAX };

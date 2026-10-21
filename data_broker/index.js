@@ -18,6 +18,7 @@ const runtimeState = createRuntimeState();
 const redis = createRedisClient(config, log);
 const session = createSessionManager(redis, config, log, {
   onDiscarded: (info) => runtimeState.markRaceDiscarded(info && info.reason),
+  onFinishIgnored: (info) => runtimeState.markFinishIgnored(info),
 });
 const dispatchAdmin = createDispatchAdmin(redis, log);
 // NEU-139: quem esta conectado (pecas por `auth`, jogo = conexao anonima) + Redis.

@@ -24,6 +24,9 @@ function loadBrokerConfig(env = process.env) {
     dispatchHttpTimeoutMs: Number(env.DISPATCH_HTTP_TIMEOUT_MS || 15000),
     // NEU-104: corrida humana com menos pacotes eSense que isto e descartada (sem EEG).
     minEegPackets: Number(env.MIN_EEG_PACKETS || 1),
+    // NEU-179: chegada (hasFinished) antes disto, contado da largada, e de outra corrida e
+    // e ignorada. 0 desliga (comportamento de antes).
+    minRaceSeconds: Number(env.MIN_RACE_SECONDS || 15),
   };
 }
 
