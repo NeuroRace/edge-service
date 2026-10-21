@@ -338,7 +338,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
 
       // Persiste o resultado e remove a lista de pacotes ja consolidada (anti-leak), so se a
       // sessao ainda estiver aberta: um Parar no meio ganha (ENQUEUE_SCRIPT, atomico).
-      const enqueued = await redis.eval(ENQUEUE_SCRIPT, 3, SESSION_KEY, 'dispatch:queue', listKey, session.id, JSON.stringify(record));
+      const enqueued = await redis.eval(ENQUEUE_SCRIPT, 3, SESSION_KEY, 'dispatch:queue', listKey, session.id, JSON.stringify(record), `player${playerId}Saved`);
       if (Number(enqueued) !== 1) {
         const closed = await redis.hgetall(SESSION_KEY);
         log('warn', 'has_finished_ignored_closed_session', { playerId, sessionId: session.id, status: closed && closed.status });
@@ -375,8 +375,13 @@ function createSessionManager(redis, config, log, hooks = {}) {
     if (!s || s.status !== 'active') return { ok: false, error: 'no_active_session' };
     if (expectedId && expectedId !== s.id) return { ok: false, error: 'session_changed' };
     if (!(await closeSession(s.id, 'cancelled', at))) return { ok: false, error: 'no_active_session' };
-    log('info', 'race_stopped', { sessionId: s.id, afterMs: at - Number(s.startedAt) });
-    return { ok: true, sessionId: s.id };
+    // Revisao do #36: quem ja estava na fila continua la. Depois do CLOSE nenhum ENQUEUE grava,
+    // entao a releitura e a verdade.
+    const closed = (await redis.hgetall(SESSION_KEY)) || {};
+    const saved = [1, 2].filter((n) => closed[`player${n}Saved`] === 'true');
+    log('info', 'race_stopped', { sessionId: s.id, afterMs: at - Number(s.startedAt), saved });
+    // `saved` so aparece quando alguem ja foi gravado: sem ninguem, a resposta e a de antes.
+    return saved.length ? { ok: true, sessionId: s.id, saved } : { ok: true, sessionId: s.id };
   }
 
   // NEU-140: o jogo largou sem registro (lado missing); o operador vincula o contato
@@ -434,6 +439,9 @@ function createSessionManager(redis, config, log, hooks = {}) {
       // hasFinished ja consolidado (claim persistido) — sobrevive a reload da tela.
       player1Finished: session.player1Dispatched === 'true',
       player2Finished: session.player2Dispatched === 'true',
+      // Revisao do #36: o lado ja esta na fila da nuvem (o descarte sem EEG nao marca).
+      player1Saved: session.player1Saved === 'true',
+      player2Saved: session.player2Saved === 'true',
     };
     if (pending) out.pending = pending;
     return out;

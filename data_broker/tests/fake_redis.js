@@ -248,6 +248,7 @@ class FakeRedis extends EventEmitter {
       if (get('id') !== argv[0] || get('status') !== 'active') return 0;
       await this.rpush(keys[1], argv[1]);
       await this.del(keys[2]);
+      if (argv[2]) await this.hset(keys[0], argv[2], 'true');
       return 1;
     }
     throw new Error('FakeRedis.eval: script desconhecido');
