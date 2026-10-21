@@ -55,6 +55,8 @@ test('test_OpsScreenServed_root_returns_html_with_strict_csp_and_three_blocks', 
     assert.match(res.body, /<option value="2">Câmera 3<\/option>/);
     assert.match(res.body, /data-register-blockers/);
     assert.match(res.body, /data-stop/);
+    // NEU-140: Largar (registra e manda o jogo largar) ao lado do Registrar.
+    assert.match(res.body, /data-start/);
     assert.doesNotMatch(res.body, /deixe em branco para anônimo/);
   } finally { server.close(); }
 });

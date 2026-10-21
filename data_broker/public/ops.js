@@ -97,9 +97,21 @@
       slots[slot] = { source: setup ? setup.source : null, email: $(`#email${slot}`).value, noSignup: noSignupBox(slot).checked, state: cardStates[slot] };
     }
     const list = S.registerBlockers(slots);
-    const el = $('[data-register-blockers]'); const btn = $('#register-btn');
-    el.textContent = list.map((b) => b.text).join(' · '); el.hidden = list.length === 0;
+    const btn = $('#register-btn');
     btn.disabled = list.length > 0; btn.dataset.blocked = String(list.length > 0);
+    // NEU-140: corrida em andamento = algum lado de gente ainda correndo (igual ao raceInProgress
+    // do broker). A sessao segue `active` depois das duas chegadas, entao o status nao serve.
+    const start = S.startBlockers({
+      register: list,
+      gameConnected: !!(st.status && st.status.game && Number(st.status.game.connections) > 0),
+      panelConnected: !!(socket && st.socketOk),
+      sessionActive: [1, 2].some((slot) => ['racing', 'missing'].includes(cardStates[slot])),
+      sources: { 1: slots[1].source, 2: slots[2].source },
+    });
+    const sb = $('[data-start]');
+    sb.disabled = start.length > 0; sb.dataset.blocked = String(start.length > 0);
+    const el = $('[data-register-blockers]');
+    el.textContent = start.map((b) => b.text).join(' · '); el.hidden = start.length === 0;
     return list;
   }
   for (const slot of [1, 2]) {
@@ -108,10 +120,8 @@
   }
 
   // ---------- registrar ----------
-  const form = $('#register-form');
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    if (renderBlockers().length) return;
+  // Devolve true se registrou. Usado pelo Registrar e pelo Largar (NEU-140).
+  async function registerPlayers() {
     const btn = $('#register-btn');
     const emails = { 1: S.normalizeEmail($('#email1').value), 2: S.normalizeEmail($('#email2').value) };
     let bad = false;
@@ -121,8 +131,9 @@
       if (!S.validateEmail(emails[slot])) { bad = true; input.setAttribute('aria-invalid', 'true'); err.textContent = 'E-mail inválido.'; err.hidden = false; }
       else { input.removeAttribute('aria-invalid'); err.hidden = true; err.textContent = ''; }
     }
-    if (bad) return;
+    if (bad) return false;
     btn.disabled = true;
+    let ok = false;
     try {
       const res = await fetch('/api/players', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player1Email: emails[1], player2Email: emails[2], player1NoSignup: noSignupBox(1).checked, player2NoSignup: noSignupBox(2).checked }) });
       const body = await res.json().catch(() => ({}));
@@ -135,6 +146,7 @@
       } else if (!res.ok) {
         $('#register-hint').textContent = `Falha ao registrar (${res.status}). Tente de novo.`;
       } else {
+        ok = true;
         $('#register-hint').textContent = 'Registrados. Pode dar a largada — o registro vale por 1 hora.';
         st.raceEvents = { 1: false, 2: false };
         // Registrar a proxima dupla "reconhece" descartes anteriores: o alerta some.
@@ -143,6 +155,28 @@
       await refresh();
     } catch (e) {
       $('#register-hint').textContent = 'Sem resposta do broker. Ele está de pé?';
+    } finally { renderBlockers(); }
+    return ok;
+  }
+  const form = $('#register-form');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (renderBlockers().length) return;
+    await registerPlayers();
+  });
+
+  // ---------- NEU-140: Largar = registra e manda o jogo largar (startRace) ----------
+  // Sem contagem no painel: o jogo ja mostra a dele. O Registrar fica como plano B
+  // (o jogo larga sozinho, como antes).
+  const startBtn = $('[data-start]');
+  startBtn.addEventListener('click', async () => {
+    if (renderBlockers().length || startBtn.disabled) return;
+    startBtn.disabled = true;
+    try {
+      if (!(await registerPlayers())) return;
+      const payload = S.startRacePayload({ 1: (setupOf(1) || {}).source, 2: (setupOf(2) || {}).source });
+      socket.emit('startRace', payload);
+      $('#register-hint').textContent = payload.gameMode === 'bot' ? 'Largada enviada ao jogo (P1 contra o bot).' : 'Largada enviada ao jogo.';
     } finally { renderBlockers(); }
   });
 
@@ -184,7 +218,11 @@
     try {
       const res = await fetch('/api/session/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }) });
       const body = await res.json().catch(() => ({}));
-      $('#register-hint').textContent = res.ok ? 'Corrida parada, nada foi gravado. Pare também no jogo.'
+      // NEU-140: o jogo so precisa do evento (Thiago, 20/10). Sem broker no socket, pare a mao.
+      const told = res.ok && !!(socket && st.socketOk);
+      if (told) socket.emit('stopRace', {});
+      $('#register-hint').textContent = told ? 'Corrida parada, nada foi gravado. O jogo volta para a espera.'
+        : res.ok ? 'Corrida parada, nada foi gravado. Pare também no jogo.'
         : body.error === 'session_changed' ? 'A corrida mudou antes da confirmação: nada foi parado. Confira e pare de novo.'
           : res.status === 409 ? 'Não há corrida em andamento.' : `Falha ao parar (${res.status}).`;
       await refresh();

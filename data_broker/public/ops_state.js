@@ -95,6 +95,24 @@
     return out;
   }
 
+  // NEU-140: Largar = registrar + mandar o jogo largar. Formato do jogo (Thiago, 20/10,
+  // NEU-146): { startRace: true, gameMode: 'player' | 'bot' }. 'bot' = o P2 e o bot e a
+  // pessoa joga no P1. Dois Bot vao como 'player': os dois carros andam com o EEG simulado.
+  function startRacePayload(sources) {
+    const bot1 = sources[1] === 'bot'; const bot2 = sources[2] === 'bot';
+    return { startRace: true, gameMode: bot2 && !bot1 ? 'bot' : 'player' };
+  }
+
+  // Largar trava com o motivo ao lado: as travas do Registrar e mais as do jogo.
+  function startBlockers({ register, gameConnected, panelConnected, sessionActive, sources }) {
+    const out = [...register];
+    if (sources[1] === 'bot' && sources[2] !== 'bot') out.push({ code: 'human_on_p2', text: 'Com um jogador só, ele joga no P1: ponha o P1 em NeuroSky e o P2 em Bot' });
+    if (!panelConnected) out.push({ code: 'panel_offline', text: 'Painel sem conexão com o broker' });
+    if (!gameConnected) out.push({ code: 'game_down', text: 'Jogo não conectado' });
+    if (sessionActive) out.push({ code: 'race_active', text: 'Já há uma corrida em andamento' });
+    return out;
+  }
+
   // O seletor mostra a camera EM USO (a que o detector informa). Mostrar a escolha que
   // falhou enganaria o operador; sem noticia do detector, mostra a escolha guardada.
   function cameraSelectValue({ chosen, inUse }) {
@@ -369,5 +387,5 @@
     return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, startRacePayload, startBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
 }));
