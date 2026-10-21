@@ -10,6 +10,31 @@ Como subir e operar o estande do NeuroRace sem NeuroSky (2 jogadores simulados),
 - [ ] Combine com quem roda o jogo: ele conecta em `http://<IP-desta-máquina>:3000` e emite `raceStarted` na largada e `hasFinished {playerId: 1|2}` na chegada (`docs/event-contracts.md`).
 
 ## 1. Subir o estande (2 min)
+
+### Dois PCs pelo cabo (NEXT, NEU-144): um clique em cada
+Antes, uma vez por PC: IP fixo do cabo (central `192.168.50.1`, coletor `192.168.50.2`) e Python 3.11 com `gesture_detector\requirements.txt` (playbook da NEU-137, Etapas 0 e 1).
+
+1. **PC central:** clique duas vezes em `scripts\iniciar-central.bat`. Ele sobe Redis, broker (com o painel) e o fone do P1, e abre o gesto do P1. Nunca sobe P2.
+2. **PC coletor:** clique duas vezes em `scripts\iniciar-coletor.bat`. Ele testa o central pelo cabo, sobe só o fone do P2 e abre o gesto do P2. Nunca sobe broker: **dois brokers foi o que quebrou a banca de 30/09**.
+3. No painel do central (`http://localhost:3000`), aba **Diagnóstico**: as peças dos dois PCs em OK.
+
+O que cada janela diz, e o que fazer:
+
+| A janela diz | O que fazer |
+|---|---|
+| `NAO achei o central em 192.168.50.1` (coletor) | Cabo plugado? Central ligado com o `.bat` aberto? IP certo no topo do `.bat`? Ele tenta de novo sozinho a cada ~8 s. |
+| `este PC nao tem o IP 192.168.50.1 do cabo` (central) | Configure o IP fixo do cabo e abra o `.bat` de novo. Sem ele o broker não sobe. |
+| `ThinkGear Connector esta FECHADO` (modo NeuroSky) | Abra o ThinkGear e pareie o fone. A leitura tenta sozinha. |
+| `ThinkGear Connector esta ABERTO e ocupa a porta do simulador` (modo `sim`) | Feche o ThinkGear. O `.bat` espera e segue sozinho. |
+| `este PC tem um broker rodando` (coletor) | `docker stop <id>` do que ele mostrar. |
+| `Nuvem DESLIGADA` (central, no evento) | Falta o `.env` da raiz: as corridas ficam guardadas e não aparecem no site. |
+
+* **Ensaio sem NeuroSky:** `iniciar-central.bat sim` e `iniciar-coletor.bat sim` (simulador no lugar do fone).
+* **Ligar sozinho com o Windows:** atalho do `.bat` em `shell:startup` (Win+R).
+* **Peça que cai volta sozinha:** todas as peças têm `restart: unless-stopped` no compose (NEU-156). O gesto volta pelo laço do `.bat`. Para parar de vez, feche a janela do `.bat`.
+* **Atualizar:** `git pull` e clique de novo. O `.bat` reconstrói o que mudou (`--build`).
+
+### Um PC só, sem coletor (banca antiga)
 ```bash
 cd edge-service
 docker compose --profile banca up -d --build

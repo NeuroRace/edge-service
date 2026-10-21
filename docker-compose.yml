@@ -1,6 +1,9 @@
 services:
   redis:
     image: redis:7-alpine
+    # NEU-156: toda peca do estande volta sozinha (antes dependia de `docker update` a mao,
+    # que se perde a cada `up` que recria o conteiner).
+    restart: unless-stopped
     # Persistencia duravel (AOF): a fila de resultados e os pacotes da corrida
     # sobrevivem a restart/recreate do container.
     command: ["redis-server", "--appendonly", "yes"]
@@ -62,6 +65,7 @@ services:
 
   acquisition-a:
     build: ./eeg_acquisition
+    restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -80,6 +84,7 @@ services:
 
   acquisition-b:
     build: ./eeg_acquisition
+    restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -100,6 +105,7 @@ services:
   # apontam para os simuladores (nao para o host). Nao altera acquisition-a/b dos outros perfis.
   acquisition-a-sim:
     build: ./eeg_acquisition
+    restart: unless-stopped
     environment:
       PLAYER_ID: 1
       ACQ_PORT: 13854
@@ -115,6 +121,7 @@ services:
 
   acquisition-b-sim:
     build: ./eeg_acquisition
+    restart: unless-stopped
     environment:
       PLAYER_ID: 2
       ACQ_PORT: 13855
