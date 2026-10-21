@@ -95,6 +95,12 @@
     return out;
   }
 
+  // NEU-141 (spec B9, offline first): o campo do jogador so trava enquanto ele corre, e mostra
+  // quem esta na pista. "Terminou" ja libera a proxima dupla, sem esperar o envio a nuvem.
+  function contactLocked({ state, hasPending }) {
+    return state === 'racing' && !hasPending;
+  }
+
   // NEU-140: Largar = registrar + mandar o jogo largar. Formato do jogo (Thiago, 20/10,
   // NEU-146): { startRace: true, gameMode: 'player' | 'bot' }. 'bot' = o P2 e o bot e a
   // pessoa joga no P1. Dois Bot vao como 'player': os dois carros andam com o EEG simulado.
@@ -265,9 +271,12 @@
     return state === 'down' ? `${key} desligado · abra o detector de gesto no ${pc}` : `${key} sem notícia · reinicie o detector de gesto no ${pc}`;
   }
 
+  // Spec A1: vermelho quando nenhuma peca do grupo responde. "Sem noticia" conta: com o PC
+  // congelado ou o cabo puxado, as pecas seguem conectadas ate o ping cair (~44 s).
+  // ThinkGear fechado (eeg_down) prova que o PC responde, entao nao conta.
   function groupLevel(states) {
     if (states.every((s) => s === 'ok')) return 'ok';
-    if (states.every((s) => s === 'down')) return 'down';
+    if (states.every((s) => s === 'down' || s === 'stale')) return 'down';
     return 'warn';
   }
 
@@ -387,5 +396,5 @@
     return q ? items.filter((p) => String(p.contact || '').toLowerCase().includes(q)) : items;
   }
 
-  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, startRacePayload, startBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
+  return { normalizeEmail, validateEmail, cardState, signalStatus, alerts, failureText, cloudNeedsAttention, pendingCount, statusStrip, pslLevel, filterRecentPlayers, diagnostics, versionWarnings, QUEUE_STUCK_MS, STALE_MS, RACE_LOCK_MS, setupLocked, registerBlockers, contactLocked, startRacePayload, startBlockers, stopArmValid, contactFieldState, cameraText, cameraSelectValue };
 }));
