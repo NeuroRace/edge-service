@@ -23,10 +23,12 @@ services:
       REDIS_URL: redis://redis:6379
       API_URL: ${API_URL:-}
       EDGE_INGEST_TOKEN: ${EDGE_INGEST_TOKEN:-}
-      # Tempos do dispatcher (defaults = config.js). Num evento com rede instavel,
-      # valores menores evitam que uma corrida segure a fila por minutos (NEU-82).
+      # Tempos do dispatcher. NEU-180: no estande a corrida insiste ~20 min sem internet
+      # (120 tentativas, no maximo 10 s entre elas) antes de ir para "Nao subiram"; com 8
+      # (o default do config.js) desistia em ~36 s. Uma corrida esperando nao segura as
+      # outras (NEU-92). Voltar ao de antes: DISPATCH_MAX_ATTEMPTS=8 no .env da raiz.
       DISPATCH_HTTP_TIMEOUT_MS: ${DISPATCH_HTTP_TIMEOUT_MS:-15000}
-      DISPATCH_MAX_ATTEMPTS: ${DISPATCH_MAX_ATTEMPTS:-8}
+      DISPATCH_MAX_ATTEMPTS: ${DISPATCH_MAX_ATTEMPTS:-120}
       DISPATCH_BACKOFF_MAX_MS: ${DISPATCH_BACKOFF_MAX_MS:-10000}
       # Corrida humana com menos pacotes de EEG que isto e descartada (NEU-104).
       MIN_EEG_PACKETS: ${MIN_EEG_PACKETS:-1}

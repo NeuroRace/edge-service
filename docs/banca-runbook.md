@@ -32,7 +32,12 @@ O que cada janela diz, e o que fazer:
 
 * **Ensaio sem NeuroSky:** `iniciar-central.bat sim` e `iniciar-coletor.bat sim` (simulador no lugar do fone).
 * **Ligar sozinho com o Windows:** atalho do `.bat` em `shell:startup` (Win+R).
-* **Peça que cai volta sozinha:** todas as peças têm `restart: unless-stopped` no compose (NEU-156). O gesto volta pelo laço do `.bat`. Para parar de vez, feche a janela do `.bat`.
+* **Peça que cai volta sozinha:** todas as peças têm `restart: unless-stopped` no compose (NEU-156). O gesto volta pelo laço do `.bat`.
+* **Parar de vez:** fechar a janela do `.bat` só para o gesto; os contêineres continuam de pé. Para parar tudo, depois de fechar a janela:
+  * central: `docker compose -f docker-compose.yml -f docker-compose.central.yml --profile live --profile banca stop`
+  * coletor: `docker compose -f docker-compose.collector.yml --profile live --profile sim-dual stop`
+  * nunca `down -v`: apaga as corridas guardadas.
+* **Ensaio em casa, sem o cabo:** no mesmo cmd, antes do `.bat`, `set CENTRAL_IP=<IP do central na rede de casa>` (`ipconfig` mostra), nos dois PCs. O broker passa a abrir nessa rede, então no evento é sempre o IP do cabo (`192.168.50.1`, o padrão).
 * **Atualizar:** `git pull` e clique de novo. O `.bat` reconstrói o que mudou (`--build`).
 
 ### Um PC só, sem coletor (banca antiga)
@@ -66,15 +71,15 @@ Abra **http://localhost:3000/** no navegador do kiosk (essa é a tela do operado
 | **Corrida iniciada sem jogadores registrados — NÃO será salva** | Deixe terminar; registre os e-mails e rode outra corrida. |
 | **Nuvem DESLIGADA — API_URL não definido** | O `.env` da raiz não foi lido. `docker compose --profile banca down && docker compose --profile banca up -d`. Confira `docker compose config \| grep API_URL`. As corridas já feitas estão na fila e sobem quando religar. |
 | **Nuvem DESLIGADA — EDGE_INGEST_TOKEN vazio** | Idem, preencha o token no `.env`. |
-| **N corrida(s) aguardando envio há mais de 30 s** | Internet caiu ou lenta. Nada se perde: continue as corridas; elas sobem sozinhas quando a rede voltar. Uma corrida com problema não trava as outras: ela fica em "nova tentativa" e as seguintes continuam sendo enviadas (NEU-92). O ranking no telão atualiza depois. |
+| **N corrida(s) aguardando envio há mais de 30 s** | Internet caiu ou lenta. Nada se perde: **espere** e continue as corridas; cada uma insiste sozinha por ~20 min (NEU-180) e sobe quando a rede voltar. Uma corrida com problema não trava as outras: ela fica em "nova tentativa" e as seguintes continuam sendo enviadas (NEU-92). O ranking no telão atualiza depois. Se alguma cair em **Não subiram**, Diagnóstico → Não subiram → **Reenviar**. |
 | **Leitor do jogador N sem sinal** | Com simulador: `docker compose --profile banca restart simulator-a` (ou `-b`). Com NeuroSky: verifique o par/USB; o acquisition reconecta sozinho. |
 | **Jogador N registrado, mas o leitor está sem sinal** | Não dê a largada: sem EEG a corrida será descartada. Resolva o sinal como na linha acima e espere a bolinha ficar verde. |
 | **Uma corrida foi descartada porque o leitor ficou sem sinal de EEG** | O fone caiu, ficou sem bateria ou largou sem sinal (NEU-104). Nada foi para a nuvem: arrume o sinal, registre o e-mail de novo e peça para a pessoa correr outra vez. |
-| **Falhou: exhausted** no histórico | A nuvem ficou fora por mais de ~2 min naquela corrida. Recupere no painel: bloco Nuvem → "Não subiram" → **Reenviar** (o registro fica guardado no dead-letter; sem o painel, `README.md` → "Dead-letter, historico e requeue"). |
+| **Falhou: exhausted** no histórico | A nuvem ficou fora por mais de ~20 min naquela corrida (NEU-180). Recupere no painel: bloco Nuvem → "Não subiram" → **Reenviar** (o registro fica guardado no dead-letter; sem o painel, `README.md` → "Dead-letter, historico e requeue"). |
 | **Sem conexão em tempo real com o broker** | Recarregue a página; se persistir, `docker compose --profile banca logs broker --tail 50`. |
 
 ## 4. Sem internet no estande
-Tudo que é local funciona (jogo, sinal, tela do operador, registro). As corridas ficam guardadas na fila do Redis (volume `redis-data`, sobrevive a reinício) e sobem sozinhas quando a internet voltar — inclusive se você desligar e ligar o Docker depois. Só o site (ranking/dashboard) não atualiza enquanto isso.
+Tudo que é local funciona (jogo, sinal, tela do operador, registro). As corridas ficam guardadas na fila do Redis (volume `redis-data`, sobrevive a reinício) e sobem sozinhas quando a internet voltar, se ela voltar em até ~20 min (NEU-180) — inclusive se você desligar e ligar o Docker depois. Depois disso, a corrida vai para **Não subiram** e volta com **Reenviar**. Só o site (ranking/dashboard) não atualiza enquanto isso.
 
 ## 5. Encerrar / reiniciar
 - Pausar sem perder nada: `docker compose --profile banca down` (o volume do Redis fica).
