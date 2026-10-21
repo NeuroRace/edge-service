@@ -27,6 +27,7 @@ O que cada janela diz, e o que fazer:
 | `ThinkGear Connector esta FECHADO` (modo NeuroSky) | Abra o ThinkGear e pareie o fone. A leitura tenta sozinha. |
 | `ThinkGear Connector esta ABERTO e ocupa a porta do simulador` (modo `sim`) | Feche o ThinkGear. O `.bat` espera e segue sozinho. |
 | `este PC tem um broker rodando` (coletor) | `docker stop <id>` do que ele mostrar. |
+| `o conteiner X esta aberto para a rede do evento` (os dois) | Contêiner de fora do NeuroRace publicando porta para o Wi-Fi do estande (NEU-157). Se não for preciso no evento, o dono do PC roda o `docker stop` + `docker update --restart=no` que a janela mostra. Se for um broker ou Redis antigo, pare sempre: é um segundo broker em potencial. |
 | `Nuvem DESLIGADA` (central, no evento) | Falta o `.env` da raiz: as corridas ficam guardadas e não aparecem no site. |
 
 * **Ensaio sem NeuroSky:** `iniciar-central.bat sim` e `iniciar-coletor.bat sim` (simulador no lugar do fone).
