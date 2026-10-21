@@ -21,6 +21,7 @@
     series: { 1: [], 2: [] },               // [{ t, a }]
     queueSince: null,
     prevDiscarded: null,                    // baseline na 1a leitura do /health
+    stopWait: null,                         // NEU-181: { since, saved, confirmed } depois do Parar
     socketOk: false,
   };
 
@@ -74,7 +75,12 @@
       st.fists[slot].push(Date.now());
       renderSignal(slot);
     });
-    socket.on('raceStarted', () => { st.raceEvents = { 1: false, 2: false }; setTimeout(refresh, 300); });
+    socket.on('raceStarted', () => { stopWaitClear(); st.raceEvents = { 1: false, 2: false }; setTimeout(refresh, 300); });
+    // NEU-181: o jogo confirma o Parar com o raceStopped (NEU-146), antes de voltar ao menu.
+    socket.on('raceStopped', () => {
+      if (st.stopWait && !st.stopWait.confirmed) { st.stopWait.confirmed = true; clearTimeout(stopWaitTimer); stopWaitUpdate(); }
+      setTimeout(refresh, 300);
+    });
     socket.on('hasFinished', (p) => { const slot = Number(p && p.playerId); if (slot === 1 || slot === 2) st.raceEvents[slot] = true; setTimeout(refresh, 400); setTimeout(refresh, 3000); });
   }
 
@@ -106,6 +112,7 @@
       gameConnected: !!(st.status && st.status.game && Number(st.status.game.connections) > 0),
       panelConnected: !!(socket && st.socketOk),
       sessionActive: [1, 2].some((slot) => ['racing', 'missing'].includes(cardStates[slot])),
+      gameStopping: S.stopWaitState({ wait: st.stopWait, now: Date.now() }) === 'waiting',
       sources: { 1: slots[1].source, 2: slots[2].source },
     });
     const sb = $('[data-start]');
@@ -184,6 +191,7 @@
     try {
       if (!(await registerPlayers())) return;
       const payload = S.startRacePayload({ 1: (setupOf(1) || {}).source, 2: (setupOf(2) || {}).source });
+      stopWaitClear(); // NEU-181: largar mesmo assim, depois de o jogo nao confirmar o Parar
       socket.emit('startRace', payload);
       $('#register-hint').textContent = payload.gameMode === 'bot' ? 'Largada enviada ao jogo (P1 contra o bot).' : 'Largada enviada ao jogo.';
     } finally { renderBlockers(); }
@@ -234,8 +242,8 @@
       const body = await res.json().catch(() => ({}));
       // NEU-140: o jogo so precisa do evento (Thiago, 20/10). Sem broker no socket, pare a mao.
       const told = res.ok && !!(socket && st.socketOk);
-      if (told) socket.emit('stopRace', {});
-      $('#register-hint').textContent = res.ok ? S.stopFeedback({ saved: body.saved, told })
+      if (told) stopWaitStart(body.saved); // NEU-181: manda o stopRace e espera o raceStopped
+      else $('#register-hint').textContent = res.ok ? S.stopFeedback({ saved: body.saved, told })
         : body.error === 'session_changed' ? 'A corrida mudou antes da confirmação: nada foi parado. Confira e pare de novo.'
           : res.status === 409 ? 'Não há corrida em andamento.' : `Falha ao parar (${res.status}).`;
       await refresh();
@@ -248,6 +256,36 @@
     } catch (e) {
       $('#register-hint').textContent = 'Sem resposta do broker. Ele está de pé?';
     } finally { stopBtn.disabled = false; }
+  });
+
+  // ---------- NEU-181: o jogo confirma o Parar ----------
+  // Antes o painel dizia "o jogo volta para a espera" sem saber se o jogo recebeu o stopRace.
+  // Agora espera o raceStopped; sem ele em 5 s, avisa e o operador decide: mandar parar de
+  // novo ou largar mesmo assim. A corrida ja esta cancelada no broker de qualquer jeito.
+  let stopWaitTimer = null;
+  const stopRetryBtn = $('[data-stop-retry]');
+  function stopWaitStart(saved) {
+    clearTimeout(stopWaitTimer);
+    st.stopWait = { since: Date.now(), saved };
+    socket.emit('stopRace', {});
+    stopWaitTimer = setTimeout(stopWaitUpdate, S.STOP_CONFIRM_MS + 50);
+    stopWaitUpdate();
+  }
+  function stopWaitUpdate() {
+    const phase = S.stopWaitState({ wait: st.stopWait, now: Date.now() });
+    if (phase === 'none') return;
+    $('#register-hint').textContent = S.stopFeedback({ saved: st.stopWait.saved, told: true, game: phase });
+    stopRetryBtn.hidden = phase !== 'timeout';
+    renderBlockers();
+  }
+  function stopWaitClear() {
+    clearTimeout(stopWaitTimer);
+    st.stopWait = null;
+    stopRetryBtn.hidden = true;
+  }
+  stopRetryBtn.addEventListener('click', () => {
+    if (!(socket && st.socketOk)) { $('#register-hint').textContent = 'Painel sem conexão com o broker: pare também no jogo.'; return; }
+    stopWaitStart(st.stopWait ? st.stopWait.saved : undefined);
   });
 
   // ---------- render ----------
