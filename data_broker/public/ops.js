@@ -267,7 +267,8 @@
   function stopWaitStart(saved) {
     clearTimeout(stopWaitTimer);
     st.stopWait = { since: Date.now(), saved };
-    socket.emit('stopRace', {});
+    // O jogo le o campo stopRace (Get Bool Field) e ignora o comando sem ele: {} nao para o jogo.
+    socket.emit('stopRace', { stopRace: true });
     stopWaitTimer = setTimeout(stopWaitUpdate, S.STOP_CONFIRM_MS + 50);
     stopWaitUpdate();
   }
