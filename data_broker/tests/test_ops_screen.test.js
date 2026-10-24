@@ -94,10 +94,10 @@ test('test_EmailNormalized_registerPlayers_lowercases_and_trims', async () => {
 
 test('test_EmailValidated_registerPlayers_rejects_invalid_format', async () => {
   const session = createSessionManager(new FakeRedis(), {}, () => {});
-  for (const bad of ['foo', 'a@b', 'a b@x.com', '@x.com', 'a@']) {
+  for (const bad of ['ab', 'a@b', 'a b@x.com', '@x.com', 'a@']) {
     await assert.rejects(() => session.registerPlayers(bad, '', { p2NoSignup: true }), (err) => err.code === 'invalid_email' && err.field === 'player1Email', bad);
   }
-  await assert.rejects(() => session.registerPlayers('ok@x.com', 'nope'), (err) => err.field === 'player2Email');
+  await assert.rejects(() => session.registerPlayers('ok@x.com', 'no'), (err) => err.field === 'player2Email');
 });
 
 test('test_EmailValidated_http_returns_400_invalid_email', async () => {
@@ -105,7 +105,7 @@ test('test_EmailValidated_http_returns_400_invalid_email', async () => {
   const server = createHttpServer(health, session);
   const port = await listen(server);
   try {
-    const res = await request(port, { method: 'POST', path: '/api/players', body: JSON.stringify({ player1Email: 'foo', player2Email: '' }) });
+    const res = await request(port, { method: 'POST', path: '/api/players', body: JSON.stringify({ player1Email: 'ab', player2Email: '' }) });
     assert.equal(res.status, 400);
     assert.deepEqual(JSON.parse(res.body), { error: 'invalid_email', field: 'player1Email' });
     const ok = await request(port, { method: 'POST', path: '/api/players', body: JSON.stringify({ player1Email: ' A@x.com ', player2Email: '', player2NoSignup: true }) });

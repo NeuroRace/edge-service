@@ -35,8 +35,8 @@ const CASES = [
   ['A@X.com ', 'email', 'a@x.com', null],
   ['joao.silva@exemplo.com.br', 'email', 'joao.silva@exemplo.com.br', null],
   ['a@b', 'email', 'a@b', 'invalid_email'],
-  ['foo', 'email', 'foo', 'invalid_email'],
-  ['11 9876 x', 'email', '11 9876 x', 'invalid_email'], // letra sem @: nao e celular
+  ['ab', 'email', 'ab', 'invalid_email'], // sem @, curto demais para apelido
+  ['11 9876 x', 'nickname', '11 9876 x', null], // letra sem @: nao e celular, vira apelido
   ['', 'empty', '', null],
   ['   ', 'empty', '', null],
 ];

@@ -67,6 +67,6 @@ test('contactFieldState: Bot, Sem cadastro, lado missing e normal', () => {
   assert.deepEqual(S.contactFieldState({ source: 'bot', noSignup: true, state: 'waiting' }), { boxHidden: true, boxChecked: false, disabled: true, placeholder: 'Bot: não vai para a nuvem' });
   assert.deepEqual(S.contactFieldState({ source: 'neurosky', noSignup: true, state: 'waiting' }), { boxHidden: false, boxChecked: true, disabled: true, placeholder: 'Sem cadastro: não vai para a nuvem' });
   // Corrida sem cadastro: o campo e do Vincular; a caixa some e desmarca.
-  assert.deepEqual(S.contactFieldState({ source: 'neurosky', noSignup: true, state: 'missing' }), { boxHidden: true, boxChecked: false, disabled: false, placeholder: 'e-mail ou celular com DDD' });
-  assert.deepEqual(S.contactFieldState({ source: null, noSignup: false, state: 'waiting' }), { boxHidden: false, boxChecked: false, disabled: false, placeholder: 'e-mail ou celular com DDD' });
+  assert.deepEqual(S.contactFieldState({ source: 'neurosky', noSignup: true, state: 'missing' }), { boxHidden: true, boxChecked: false, disabled: false, placeholder: 'e-mail, celular ou apelido' });
+  assert.deepEqual(S.contactFieldState({ source: null, noSignup: false, state: 'waiting' }), { boxHidden: false, boxChecked: false, disabled: false, placeholder: 'e-mail, celular ou apelido' });
 });

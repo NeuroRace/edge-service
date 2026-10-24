@@ -26,7 +26,7 @@
 
   // NEU-160: e-mail ou celular num campo so. Tem `@` = e-mail; so numeros (com espaco,
   // ponto, traco, parenteses ou +) = celular brasileiro com DDD, guardado como +55DDD9XXXXXXXX.
-  // Qualquer outra coisa segue como e-mail (e e recusada como hoje: invalid_email).
+  // Sem `@` e sem cara de celular = apelido (abaixo); fora do tamanho, invalid_email.
   const PHONE_CHARS_RE = /^[\d\s().+-]+$/;
   const DDDS = new Set('11 12 13 14 15 16 17 18 19 21 22 24 27 28 31 32 33 34 35 37 38 41 42 43 44 45 46 47 48 49 51 53 54 55 61 62 63 64 65 66 67 68 69 71 73 74 75 77 79 81 82 83 84 85 86 87 88 89 91 92 93 94 95 96 97 98 99'.split(' '));
 
@@ -40,11 +40,22 @@
     return null;
   }
 
-  // -> { type: 'empty'|'email'|'phone', value, error: null | { code, text } }
+  // Apelido do site (profiles.display_name): sem `@`, nao-celular, 3..20 caracteres. Guardado
+  // como digitado (so trim): a nuvem compara sem diferenciar maiuscula de minuscula.
+  const NICKNAME_MIN = 3;
+  const NICKNAME_MAX = 20;
+
+  // -> { type: 'empty'|'email'|'phone'|'nickname', value, error: null | { code, text } }
   function parseContact(rawValue) {
     const raw = String(rawValue == null ? '' : rawValue).trim();
     if (raw === '') return { type: 'empty', value: '', error: null };
-    if (raw.includes('@') || !PHONE_CHARS_RE.test(raw) || !/\d/.test(raw)) {
+    if (!raw.includes('@') && (!PHONE_CHARS_RE.test(raw) || !/\d/.test(raw))) {
+      // Conta code points (como o char_length do Postgres), nao unidades UTF-16: emoji conta 1.
+      const size = Array.from(raw).length;
+      if (size >= NICKNAME_MIN && size <= NICKNAME_MAX) return { type: 'nickname', value: raw, error: null };
+      return { type: 'email', value: normalizeEmail(raw), error: { code: 'invalid_email', text: 'e-mail ou apelido inválido' } };
+    }
+    if (raw.includes('@')) {
       const value = normalizeEmail(raw);
       return { type: 'email', value, error: EMAIL_RE.test(value) ? null : { code: 'invalid_email', text: 'e-mail inválido' } };
     }
@@ -114,7 +125,7 @@
   // NEU-140: campo de contato e caixa "Sem cadastro". Bot (NEU-86) e Sem cadastro desligam o campo;
   // numa corrida sem cadastro (missing) o campo e do Vincular, entao a caixa some e desmarca.
   function contactFieldState({ source, noSignup, state }) {
-    const PH = 'e-mail ou celular com DDD';
+    const PH = 'e-mail, celular ou apelido';
     if (source === 'bot') return { boxHidden: true, boxChecked: false, disabled: true, placeholder: 'Bot: não vai para a nuvem' };
     if (state === 'missing') return { boxHidden: true, boxChecked: false, disabled: false, placeholder: PH };
     if (noSignup) return { boxHidden: false, boxChecked: true, disabled: true, placeholder: 'Sem cadastro: não vai para a nuvem' };

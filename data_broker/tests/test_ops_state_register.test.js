@@ -45,8 +45,8 @@ test('registerBlockers: contato, vazio, Sem cadastro, invalido, Bot e corrida se
   assert.deepEqual(S.registerBlockers({ 1: ok, 2: ok }), []);
   assert.deepEqual(S.registerBlockers({ 1: { ...ok, email: '  ' }, 2: ok }), [{ slot: 1, code: 'missing_contact', text: 'P1: digite o contato ou marque Sem cadastro' }]);
   assert.deepEqual(S.registerBlockers({ 1: { ...ok, email: '', noSignup: true }, 2: ok }), []);
-  assert.deepEqual(S.registerBlockers({ 1: ok, 2: { ...ok, email: 'foo' } }), [{ slot: 2, code: 'invalid_email', text: 'P2: e-mail inválido' }]);
-  assert.deepEqual(S.registerBlockers({ 1: ok, 2: { ...ok, email: 'foo', noSignup: true } }), [{ slot: 2, code: 'invalid_email', text: 'P2: e-mail inválido' }]);
+  assert.deepEqual(S.registerBlockers({ 1: ok, 2: { ...ok, email: 'ab' } }), [{ slot: 2, code: 'invalid_email', text: 'P2: e-mail ou apelido inválido' }]);
+  assert.deepEqual(S.registerBlockers({ 1: ok, 2: { ...ok, email: 'ab', noSignup: true } }), [{ slot: 2, code: 'invalid_email', text: 'P2: e-mail ou apelido inválido' }]);
   assert.deepEqual(S.registerBlockers({ 1: { ...ok, source: 'bot', email: '' }, 2: ok }), []);
   assert.deepEqual(S.registerBlockers({ 1: { ...ok, source: null, email: '' }, 2: ok }).map((b) => b.code), ['missing_contact'], 'sem resposta do broker = NeuroSky');
   assert.deepEqual(S.registerBlockers({ 1: { ...ok, state: 'missing' }, 2: ok }), [{ slot: 1, code: 'link_first', text: 'P1: corrida sem cadastro, use Vincular' }]);

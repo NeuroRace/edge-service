@@ -2,7 +2,7 @@
 // Painel de operacao (NEU-143): resumo da fila de envio a nuvem e reenvio das corridas
 // da dead-letter. Le o Redis direto, entao funciona com o dispatcher desligado.
 // Sem apagar e sem limpar fila: uma corrida que falhou fica guardada ate ser reenviada.
-const { maskContact } = require('./api_dispatcher');
+const { contactLabel } = require('./api_dispatcher');
 const { execMulti } = require('./session_manager');
 
 const QUEUE = 'dispatch:queue';
@@ -37,7 +37,7 @@ function summarize(text) {
     jobId: entry.jobId ?? rec?.jobId ?? null,
     sessionId: rec?.sessionId ?? null,
     playerId: rec?.playerId ?? null,
-    email: maskContact(rec?.payload?.phone || rec?.payload?.email),
+    email: contactLabel(rec?.payload),
     failedAt: entry.failedAt ?? null,
     reason: entry.reason ?? null,
     httpStatus: entry.httpStatus ?? null,

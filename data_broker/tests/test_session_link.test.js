@@ -47,7 +47,7 @@ test('vincular sem corrida, depois do Parar ou com entrada ruim', async () => {
   assert.deepEqual(await session.linkPlayer(3, 'a@x.com'), { ok: false, error: 'invalid_player' });
   assert.deepEqual(await session.linkPlayer('1', 'a@x.com'), { ok: false, error: 'invalid_player' });
   assert.deepEqual(await session.linkPlayer(1, ''), { ok: false, error: 'invalid_email' });
-  assert.deepEqual(await session.linkPlayer(1, 'foo'), { ok: false, error: 'invalid_email' });
+  assert.deepEqual(await session.linkPlayer(1, 'ab'), { ok: false, error: 'invalid_email' });
   await session.stopRace();
   assert.deepEqual(await session.linkPlayer(1, 'a@x.com'), { ok: false, error: 'no_active_session' });
 });
