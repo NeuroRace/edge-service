@@ -108,7 +108,7 @@ function createSessionManager(redis, config, log, hooks = {}) {
   function checkEmail(raw, field) {
     const c = parseContact(raw);
     if (c.error) {
-      const err = new Error(`${c.type === 'phone' ? 'celular' : 'e-mail'} invalido em ${field}`);
+      const err = new Error(`${c.type === 'phone' ? 'celular' : 'e-mail ou apelido'} invalido em ${field}`);
       err.code = c.error.code;
       err.field = field;
       err.reason = c.error.text;
@@ -353,16 +353,18 @@ function createSessionManager(redis, config, log, hooks = {}) {
         return;
       }
 
-      // NEU-160: o contato guardado e e-mail ou celular (+55...). Celular vai em `phone`.
+      // NEU-160: o contato guardado e e-mail, celular (+55...) ou apelido do site.
+      // Celular vai em `phone`; apelido em `nickname`; os dois com `email: null`.
       const contact = current[`player${playerId}Email`];
-      const isPhone = parseContact(contact).type === 'phone';
+      const contactType = parseContact(contact).type;
       const record = {
         jobId: randomUUID(),
         playerId,
         sessionId: session.id,
         persistedAt: Date.now(),
         payload: {
-          ...(isPhone ? { email: null, phone: contact } : { email: contact }),
+          ...(contactType === 'phone' ? { email: null, phone: contact }
+            : contactType === 'nickname' ? { email: null, nickname: contact } : { email: contact }),
           playerUuid: current[`player${playerId}Uuid`] || null,
           startedAt: Number(session.startedAt),
           finishedAt: Date.now(),

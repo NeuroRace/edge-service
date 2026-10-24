@@ -12,9 +12,11 @@ function toCanonicalBody(record) {
     idempotency_key: record.jobId,
     race_id: record.sessionId,
     player_slot: record.playerId,
-    // NEU-160: vem um dos dois. Celular so com a nuvem da NEU-159; antes dela, a nuvem
-    // recusa (422) e a corrida fica em "Nao subiram" para reenviar.
-    ...(payload.phone ? { player_phone: payload.phone } : { player_email: payload.email }),
+    // NEU-160: vem exatamente um dos tres. Celular so com a nuvem da NEU-159; apelido so com
+    // a nuvem que aceita player_nickname. Antes dela, a nuvem recusa (422) e a corrida fica
+    // em "Nao subiram" para reenviar. Apelido inexistente: 422 player_nickname_not_found.
+    ...(payload.phone ? { player_phone: payload.phone }
+      : payload.nickname ? { player_nickname: payload.nickname } : { player_email: payload.email }),
     player_uuid: payload.playerUuid ?? null,
     source: 'real',
     started_at: payload.startedAt,

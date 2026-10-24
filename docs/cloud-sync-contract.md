@@ -79,6 +79,8 @@ NEU-37: `race_id`, `player_email`, `telemetry_points`). O Edge é responsável p
   "player_email": "jogador1@exemplo.com",  // string não-vazia (humano) — OU, no lugar dele:
   // "player_phone": "+5511987654321",     // NEU-160/159: celular BR, +55 + DDD + 9 dígitos. Vem um dos dois
   //   (os dois juntos: 422 player_email_and_phone_both; celular fora do formato: 422 player_phone_invalid)
+  // "player_nickname": "Corredor99",      // apelido do site (profiles.display_name), 3..20 chars após trim,
+  //   comparado sem caixa (citext). Vem exatamente um dos três. Apelido inexistente: 422 player_nickname_not_found
   "player_uuid": null,                     // string uuid Supabase ou null (ainda não resolvido)
   "source": "real",                        // enum: "real" | "bot" (sempre "real" aqui)
   "started_at": 1735689600000,             // int, Unix epoch ms (UTC) — início da corrida
@@ -170,6 +172,7 @@ ainda não existe) precisa traduzir para o body canônico. Gap a fechar:
 | `player_slot` | `record.playerId` | renomear |
 | `player_email` | `record.payload.email` | renomear (só quando o contato é e-mail) |
 | `player_phone` | `record.payload.phone` | NEU-160: só quando o contato é celular; aí `player_email` não vai |
+| `player_nickname` | `record.payload.nickname` | só quando o contato é apelido do site; aí `player_email` não vai |
 | `player_uuid` | `record.payload.playerUuid` | renomear |
 | `source` | — (sempre humano) | adicionar (`"real"`) |
 | `started_at` | `record.payload.startedAt` | ok (já epoch ms) |
@@ -186,6 +189,11 @@ ainda não existe) precisa traduzir para o body canônico. Gap a fechar:
 > O record interno produzido hoje (lido em `session_manager.js`) é:
 > `{ jobId, playerId, sessionId, persistedAt, payload:{ email, playerUuid, startedAt, finishedAt, packets:[<eSense cru>] } }`.
 > NEU-160: com celular, `payload` traz `email: null` e `phone: "+5511987654321"`.
+> Com apelido (sem `@`, não-celular, 3..20 caracteres no painel), `payload` traz `email: null` e
+> `nickname: "Corredor99"` (guardado como digitado, só com trim; a nuvem compara sem caixa).
+> **Apelido inexistente:** a nuvem responde `422 player_nickname_not_found`; a corrida vai para
+> "Não subiram" e volta com **Reenviar** (ex.: depois de o jogador criar o apelido no site).
+> Nuvem anterior ao `player_nickname`: também 422, mesmo caminho.
 >
 > **Celular antes da NEU-159 na nuvem:** a `ingest-race` de hoje exige `player_email` e
 > responde `422 player_email_required`. A corrida vai para o dead-letter com o registro

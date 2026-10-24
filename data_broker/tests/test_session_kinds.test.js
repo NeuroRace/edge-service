@@ -34,7 +34,7 @@ test('registro: contato valido ganha de Sem cadastro marcado', async () => {
 
 test('registro: e-mail invalido continua invalid_email, mesmo com Sem cadastro', async () => {
   const { session } = make();
-  await assert.rejects(() => session.registerPlayers('foo', '', { p1NoSignup: true, p2NoSignup: true }), (err) => err.code === 'invalid_email' && err.field === 'player1Email');
+  await assert.rejects(() => session.registerPlayers('ab', '', { p1NoSignup: true, p2NoSignup: true }), (err) => err.code === 'invalid_email' && err.field === 'player1Email');
 });
 
 test('registro: lado em Bot ignora e-mail e Sem cadastro', async () => {
@@ -91,7 +91,7 @@ test('pending antigo (sem NoSignup) com e-mail vazio vira missing na largada', a
 
 test('sessao antiga sem kind: getCurrentSession deriva do IsBot', async () => {
   const { redis, session } = make();
-  await redis.hset('session:current', 'id', 's-old', 'startedAt', String(Date.now()), 'status', 'active',
+  await redis.hset('session:current', 'id', 's-old', 'startedAt', '1000', 'status', 'active',
     'player1Email', 'a@x.com', 'player1IsBot', 'false', 'player2Email', '', 'player2IsBot', 'true');
   const cur = await session.getCurrentSession();
   assert.equal(cur.player1Kind, 'contact'); assert.equal(cur.player2Kind, 'bot');

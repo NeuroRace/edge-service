@@ -39,7 +39,7 @@ test('registrar de novo sobe para o topo sem duplicar; contato normalizado', asy
 
 test('registro invalido nao grava nada na lista', async () => {
   const { session } = makeSession();
-  await assert.rejects(session.registerPlayers('ok@x.com', 'invalido'), { code: 'invalid_email' });
+  await assert.rejects(session.registerPlayers('ok@x.com', 'invalido@'), { code: 'invalid_email' });
   assert.deepEqual(await session.getRecentPlayers(), []);
 });
 

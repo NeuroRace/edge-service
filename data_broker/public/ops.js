@@ -155,7 +155,7 @@
       const body = await res.json().catch(() => ({}));
       if (res.status === 400 && (body.error === 'invalid_email' || body.error === 'invalid_phone')) {
         const slot = body.field === 'player2Email' ? 2 : 1;
-        showFieldError(slot, body.error === 'invalid_phone' ? 'O broker recusou este celular.' : 'O broker recusou este e-mail.');
+        showFieldError(slot, body.error === 'invalid_phone' ? 'O broker recusou este celular.' : 'O broker recusou este e-mail ou apelido.');
       } else if (res.status === 400 && body.error === 'missing_contact') {
         const slot = body.field === 'player2Email' ? 2 : 1;
         const err = $(`[data-error="${slot}"]`); err.textContent = 'Digite o contato ou marque Sem cadastro.'; err.hidden = false;
@@ -201,14 +201,14 @@
   document.querySelectorAll('[data-link-player]').forEach((btn) => btn.addEventListener('click', async () => {
     const slot = Number(btn.dataset.linkPlayer); const input = $(`#email${slot}`); const err = $(`[data-error="${slot}"]`);
     const c = S.parseContact(input.value);
-    if (c.type === 'empty') { showFieldError(slot, 'Digite o e-mail ou o celular para vincular.'); return; }
+    if (c.type === 'empty') { showFieldError(slot, 'Digite o e-mail, o celular ou o apelido para vincular.'); return; }
     if (c.error) { showFieldError(slot, `${cap(c.error.text)}.`); return; }
     const email = c.value;
     btn.disabled = true;
     try {
       const res = await fetch('/api/session/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player: slot, email, sessionId: st.session.sessionId }) });
       const body = await res.json().catch(() => ({}));
-      const MSG = { session_changed: 'A corrida mudou. Confira o card e clique de novo.', already_finished: 'Essa corrida já terminou sem cadastro.', not_missing: 'Esse lado já tem cadastro.', no_active_session: 'Não há corrida em andamento.', invalid_email: 'O broker recusou este e-mail.', invalid_phone: 'O broker recusou este celular.' };
+      const MSG = { session_changed: 'A corrida mudou. Confira o card e clique de novo.', already_finished: 'Essa corrida já terminou sem cadastro.', not_missing: 'Esse lado já tem cadastro.', no_active_session: 'Não há corrida em andamento.', invalid_email: 'O broker recusou este e-mail ou apelido.', invalid_phone: 'O broker recusou este celular.' };
       if (res.ok) { input.removeAttribute('aria-invalid'); err.hidden = true; err.textContent = ''; $('#register-hint').textContent = `Jogador ${slot} vinculado: ${S.formatContact(email)}.`; }
       else { err.textContent = MSG[body.error] || `Falha ao vincular (${res.status}).`; err.hidden = false; }
     } catch (e) {

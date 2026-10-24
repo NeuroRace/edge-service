@@ -34,6 +34,13 @@ function maskContact(contact) {
   return m ? `(${m[1]}) *****-${m[2]}` : maskEmail(contact);
 }
 
+// Contato para o historico e o "Nao subiram": apelido e publico (aparece inteiro);
+// e-mail e celular mascarados.
+function contactLabel(payload) {
+  if (payload && typeof payload.nickname === 'string' && payload.nickname) return payload.nickname;
+  return maskContact(payload?.phone || payload?.email);
+}
+
 function targetOf(apiUrl) {
   try { return new URL(apiUrl).host; } catch { return null; }
 }
@@ -136,7 +143,7 @@ function createDispatcher(
       jobId: record?.jobId ?? null,
       sessionId: record?.sessionId ?? null,
       playerId: record?.playerId ?? null,
-      email: maskContact(record?.payload?.phone || record?.payload?.email),
+      email: contactLabel(record?.payload),
       status, result, httpStatus, reason, attempts, at: now(),
     };
   }
@@ -295,4 +302,4 @@ function createDispatcher(
   return { start, stop, processOnce, recoverProcessing, getState };
 }
 
-module.exports = { createDispatcher, classifyStatus, maskEmail, maskContact, HISTORY, HISTORY_MAX };
+module.exports = { createDispatcher, classifyStatus, maskEmail, maskContact, contactLabel, HISTORY, HISTORY_MAX };

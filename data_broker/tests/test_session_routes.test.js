@@ -50,7 +50,7 @@ test('POST /api/session/link: 200, 400 e 409', async () => {
     assert.equal((await post(port, '/api/session/link', JSON.stringify({ player: 1, email: 'a@x.com' }))).status, 409);
     await session.onRaceStarted();
     assert.equal((await post(port, '/api/session/link', JSON.stringify({ player: '1', email: 'a@x.com' }))).body.error, 'invalid_player');
-    assert.equal((await post(port, '/api/session/link', JSON.stringify({ player: 1, email: 'foo' }))).status, 400);
+    assert.equal((await post(port, '/api/session/link', JSON.stringify({ player: 1, email: 'ab' }))).status, 400);
     assert.equal((await post(port, '/api/session/link', JSON.stringify({ player: 1, email: 42 }))).body.error, 'invalid_email');
     const ok = await post(port, '/api/session/link', JSON.stringify({ player: 1, email: 'a@x.com' }));
     assert.equal(ok.status, 200); assert.equal(ok.body.session.player1Kind, 'contact');
