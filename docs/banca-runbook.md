@@ -17,6 +17,7 @@ Antes, uma vez por PC: IP fixo do cabo (central `192.168.50.1`, coletor `192.168
 1. **PC central:** clique duas vezes em `scripts\iniciar-central.bat`. Ele sobe Redis, broker (com o painel) e o fone do P1, e abre o gesto do P1. Nunca sobe P2.
 2. **PC coletor:** clique duas vezes em `scripts\iniciar-coletor.bat`. Ele testa o central pelo cabo, sobe só o fone do P2 e abre o gesto do P2. Nunca sobe broker: **dois brokers foi o que quebrou a banca de 30/09**.
 3. No painel do central (`http://localhost:3000`), aba **Diagnóstico**: as peças dos dois PCs em OK.
+4. **Jogo, no central:** feche o Unreal Editor e clique duas vezes no atalho **NeuroRace - Jogo** (standalone, tela cheia; espere ~3 min). **Nunca o Play do editor:** nele o tempo do site sai até 5 s maior que o da tela (NEU-184). A faixa do painel mostra **Jogo OK**. Como criar o atalho e o porquê: `docs/jogo-standalone.md`.
 
 O que cada janela diz, e o que fazer:
 
@@ -61,8 +62,9 @@ Abra **http://localhost:3000/** no navegador do kiosk (essa é a tela do operado
    * **Precisa cancelar?** **Parar corrida** e confirme no mesmo botão. O que ainda não chegou não é gravado, e o painel manda o jogo parar (`stopRace`). Quem já tinha chegado continua gravado: o botão e a dica dizem quem (ex.: "o P1 já foi gravado"). Depois do Parar, a dica mostra **Parando o jogo…** até o jogo confirmar (`raceStopped`, NEU-181) e o Largar espera. Sem confirmação em 5 s, ela avisa: confira a tela do jogo e clique em **Mandar parar de novo**. **Largue mesmo assim só com o jogo visivelmente no menu.** Se o painel estiver sem conexão com o broker, a dica pede para parar também no jogo. Os e-mails voltam para os campos.
 2. **Largada** (o jogo emite `raceStarted`). Os cartões passam a **Correndo**; os e-mails ficam travados; o sinal dos dois jogadores continua vivo.
 3. **Chegada** (o jogo emite `hasFinished` de cada jogador). Cartão → **Finalizada — enviando…** → **Enviada ✓** em ~2 s; a corrida aparece no histórico do bloco Nuvem.
-4. **Mostrar no site.** `https://neurorace-v2.vercel.app/ranking` (público, atualiza ao recarregar) e o dashboard do jogador (ele entra com a conta do mesmo e-mail; se ainda não tem conta, cria com o **mesmo e-mail** e a corrida aparece após confirmar).
-5. Próxima dupla: volte ao passo 1 (os campos já estão liberados).
+4. **Depois que os dois chegarem, clique em Parar corrida** e confirme no mesmo botão, rápido: o primeiro clique se desarma em poucos segundos. O jogo não avisa o fim da corrida sozinho (NEU-185): sem o Parar, o Largar fica travado por até 10 min. O botão diz "Confirmar: parar? (o P1 e o P2 já foi gravado)" e, depois, "Corrida parada. Os tempos do P1 e do P2 já tinham sido gravados e vão para o site. O jogo voltou para a espera.". Nenhum tempo se perde (ensaio de 23/10, NEU-184). Não deixe passar 10 min: depois disso a corrida expira e o Parar não manda o jogo voltar ao menu (NEU-183).
+5. **Mostrar no site.** `https://neurorace-v2.vercel.app/ranking` (público, atualiza ao recarregar) e o dashboard do jogador (ele entra com a conta do mesmo e-mail; se ainda não tem conta, cria com o **mesmo e-mail** e a corrida aparece após confirmar).
+6. Próxima dupla: volte ao passo 1 (os campos já estão liberados).
 
 **Regra de ouro: registrar ANTES da largada.** Se a corrida começar sem registro, o banner vermelho avisa "NÃO será salva" — a corrida não vai para a nuvem e não há como recuperar depois (NEU-73).
 
@@ -77,6 +79,8 @@ Abra **http://localhost:3000/** no navegador do kiosk (essa é a tela do operado
 | **Jogador N registrado, mas o leitor está sem sinal** | Não dê a largada: sem EEG a corrida será descartada. Resolva o sinal como na linha acima e espere a bolinha ficar verde. |
 | **Uma corrida foi descartada porque o leitor ficou sem sinal de EEG** | O fone caiu, ficou sem bateria ou largou sem sinal (NEU-104). Nada foi para a nuvem: arrume o sinal, registre o e-mail de novo e peça para a pessoa correr outra vez. |
 | **Falhou: exhausted** no histórico | A nuvem ficou fora por mais de ~20 min naquela corrida (NEU-180). Recupere no painel: bloco Nuvem → "Não subiram" → **Reenviar** (o registro fica guardado no dead-letter; sem o painel, `README.md` → "Dead-letter, historico e requeue"). |
+| **Largar travado, com os dois jogadores já chegados** | Clique em **Parar corrida** e confirme (passo 4 de "Cada corrida"). Se já passou de 10 min, o Parar não chega ao jogo (NEU-183): se o jogo ficou no pódio, feche-o e abra de novo pelo atalho (~3 min). |
+| **Tempo no site maior que o da tela do jogo** | O jogo está no Play do editor. Feche o editor e abra o atalho **NeuroRace - Jogo** (`docs/jogo-standalone.md`). |
 | **Sem conexão em tempo real com o broker** | Recarregue a página; se persistir, `docker compose --profile banca logs broker --tail 50`. |
 
 ## 4. Sem internet no estande
@@ -90,5 +94,6 @@ Tudo que é local funciona (jogo, sinal, tela do operador, registro). As corrida
 ## 6. Checklist de 1 minuto antes da banca
 - [ ] `/health` → `dispatcher.enabled: true` e `target` correto.
 - [ ] Tela sem banner; dois sinais "conectado".
-- [ ] Corrida de teste registrada com um e-mail de teste → "Enviada ✓" → apareceu no `/ranking`.
+- [ ] Jogo aberto pelo atalho (standalone), editor fechado; **Jogo OK** e `game.connections` = 1 no `/api/status`.
+- [ ] Corrida de teste registrada com um e-mail de teste → "Enviada ✓" → apareceu no `/ranking` → **Parar corrida** liberou o Largar.
 - [ ] Telão com `/ranking` aberto; celular com o dashboard de um apresentador logado.
